@@ -1,8 +1,12 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
+const siteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL ??
+  "https://ndfl-prosto-help.bobosafed.chatgpt.site";
+
 export const metadata: Metadata = {
-  metadataBase: new URL("https://ndfl-prosto-help.bobosafed.chatgpt.site"),
+  metadataBase: new URL(siteUrl),
   title: "Проблемы с НДФЛ — вам сюда",
   description: "Понятная консультация по НДФЛ за 100 ₽: задайте вопрос и получите ответ по персональному коду.",
   openGraph: {
