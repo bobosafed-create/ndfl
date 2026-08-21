@@ -2,15 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-const CONSULTATION_CODE = "121";
-
 type Stage = "room" | "payment" | "question" | "waiting" | "answer";
 
 export default function Home() {
   const [stage, setStage] = useState<Stage>("room");
   const [question, setQuestion] = useState("");
   const [tipVisible, setTipVisible] = useState(true);
-  const [code, setCode] = useState("");
+  const [consultationCode, setConsultationCode] = useState("");
+  const [safeCode, setSafeCode] = useState("");
   const [safeMessage, setSafeMessage] = useState("");
   const [answerReady, setAnswerReady] = useState(false);
 
@@ -26,6 +25,24 @@ export default function Home() {
     return () => window.clearTimeout(timer);
   }, [stage]);
 
+  function generateConsultationCode() {
+    const previousCode = window.sessionStorage.getItem("ndfl-last-consultation-code");
+    let nextCode = "";
+    do {
+      const randomValue = window.crypto.getRandomValues(new Uint32Array(1))[0];
+      nextCode = String(10000000 + (randomValue % 90000000));
+    } while (nextCode === previousCode);
+
+    window.sessionStorage.setItem("ndfl-last-consultation-code", nextCode);
+    setConsultationCode(nextCode);
+    setSafeCode("");
+    setStage("question");
+  }
+
+  function displayCode(value: string) {
+    return value.replace(/(\d{4})(\d{4})/, "$1 $2");
+  }
+
   useEffect(() => {
     if (stage !== "waiting") return;
     const timer = window.setTimeout(() => setAnswerReady(true), 7000);
@@ -34,13 +51,13 @@ export default function Home() {
 
   function saveQuestion() {
     if (question.trim().length < 10) return;
-    window.localStorage.setItem("ndfl-question-121", question.trim());
+    window.localStorage.setItem(`ndfl-question-${consultationCode}`, question.trim());
     setStage("waiting");
     setSafeMessage("");
   }
 
   function openSafe() {
-    if (code !== CONSULTATION_CODE) {
+    if (safeCode !== consultationCode) {
       setSafeMessage("Код не подошёл. Посмотрите номер в правом верхнем углу бланка.");
       return;
     }
@@ -53,12 +70,13 @@ export default function Home() {
   }
 
   function resetDemo() {
+    window.localStorage.removeItem(`ndfl-question-${consultationCode}`);
     setStage("room");
     setQuestion("");
-    setCode("");
+    setConsultationCode("");
+    setSafeCode("");
     setAnswerReady(false);
     setSafeMessage("");
-    window.localStorage.removeItem("ndfl-question-121");
   }
 
   return (
@@ -107,13 +125,13 @@ export default function Home() {
           </div>
           <div className={`safe ${answerReady ? "safe-ready" : ""}`} aria-label="Сейф с ответом"><span className="safe-label">{answerReady ? "ОТВЕТ ГОТОВ" : "ВАШ ОТВЕТ"}</span><div className={`safe-door ${stage === "answer" ? "safe-open" : ""}`}><i className="safe-wheel">✦</i><b>КОД</b></div><div className="safe-legs"><i/><i/></div></div><div className="rug" />
 
-          {stage === "payment" && <div className="modal-backdrop"><section className="payment-card" role="dialog" aria-modal="true" aria-labelledby="payment-title"><button className="close" onClick={() => setStage("room")} aria-label="Закрыть">×</button><span className="payment-icon">₽</span><small>Демонстрационный платёж</small><h3 id="payment-title">Консультация по НДФЛ</h3><div className="price-row"><span>К оплате</span><strong>100 ₽</strong></div><button className="action-button" onClick={() => setStage("question")}>Подтвердить демо-оплату</button><p>Банковские данные не запрашиваются, деньги не списываются.</p></section></div>}
+          {stage === "payment" && <div className="modal-backdrop"><section className="payment-card" role="dialog" aria-modal="true" aria-labelledby="payment-title"><button className="close" onClick={() => setStage("room")} aria-label="Закрыть">×</button><span className="payment-icon">₽</span><small>Демонстрационный платёж</small><h3 id="payment-title">Консультация по НДФЛ</h3><div className="price-row"><span>К оплате</span><strong>100 ₽</strong></div><button className="action-button" onClick={generateConsultationCode}>Подтвердить демо-оплату</button><p>После подтверждения будет создан новый персональный код. Банковские данные не запрашиваются, деньги не списываются.</p></section></div>}
 
-          {stage === "question" && <div className="desk-layer"><article className="question-paper"><header><span>Бланк вопроса</span><strong>Номер консультации (код) — <b>{CONSULTATION_CODE}</b></strong></header>{tipVisible && <div className="timed-tip"><b>Подсказка</b> Опишите кратко свой вопрос. Ответ будет дан в течение часа и появится в сейфе справа. Код от сейфа — номер консультации.</div>}<label htmlFor="question">Ваш вопрос консультанту</label><textarea id="question" value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={1200} placeholder="Например: в 2025 году я продал квартиру. Нужно ли подавать декларацию и какие документы понадобятся?" autoFocus/><div className="paper-footer"><span>{question.length} / 1200</span><button className="action-button" disabled={question.trim().length < 10} onClick={saveQuestion}>Сохранить документ <b>✓</b></button></div></article></div>}
+          {stage === "question" && <div className="desk-layer"><article className="question-paper"><header><span>Бланк вопроса</span><strong>Номер консультации (код) — <b>{displayCode(consultationCode)}</b></strong></header>{tipVisible && <div className="timed-tip"><b>Подсказка</b> Опишите кратко свой вопрос. Ответ будет дан в течение часа и появится в сейфе справа. Сохраните код: он создан специально для этой консультации.</div>}<label htmlFor="question">Ваш вопрос консультанту</label><textarea id="question" value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={1200} placeholder="Например: в 2025 году я продал квартиру. Нужно ли подавать декларацию и какие документы понадобятся?" autoFocus/><div className="paper-footer"><span>{question.length} / 1200</span><button className="action-button" disabled={question.trim().length < 10} onClick={saveQuestion}>Сохранить документ <b>✓</b></button></div></article></div>}
 
-          {stage === "waiting" && <div className="waiting-panel"><span className="seal">✓</span><h3>Вопрос сохранён</h3><p>Ответ будет подготовлен не позднее <strong>{deadline}</strong>. В этой демонстрации сейф загорится через несколько секунд.</p><div className="code-reminder">Ваш код <strong>{CONSULTATION_CODE}</strong></div><label htmlFor="safe-code">Введите код на сейфе</label><div className="code-entry"><input id="safe-code" inputMode="numeric" maxLength={3} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))} placeholder="•••"/><button onClick={openSafe}>Открыть</button></div>{safeMessage && <p className="safe-message" role="status">{safeMessage}</p>}</div>}
+          {stage === "waiting" && <div className="waiting-panel"><span className="seal">✓</span><h3>Вопрос сохранён</h3><p>Ответ будет подготовлен не позднее <strong>{deadline}</strong>. В этой демонстрации сейф загорится через несколько секунд.</p><div className="code-reminder">Ваш персональный код <strong>{displayCode(consultationCode)}</strong></div><label htmlFor="safe-code">Введите код на сейфе</label><div className="code-entry"><input id="safe-code" inputMode="numeric" autoComplete="one-time-code" maxLength={8} value={safeCode} onChange={(event) => setSafeCode(event.target.value.replace(/\D/g, ""))} placeholder="••••••••" aria-label="Восьмизначный код консультации"/><button onClick={openSafe}>Открыть</button></div>{safeMessage && <p className="safe-message" role="status">{safeMessage}</p>}</div>}
 
-          {stage === "answer" && <div className="answer-layer"><article className="answer-paper"><header><span>Ответ консультанта</span><strong>Консультация № {CONSULTATION_CODE}</strong></header><div className="consultant-stamp">КОНСУЛЬТАНТ<br/><b>ОТВЕТИЛ</b></div><h3>Ваш вопрос получен</h3><p>Это демонстрационный ответ. В рабочем сервисе здесь будет персональная консультация специалиста по вашему вопросу с понятным перечнем следующих шагов и необходимых документов.</p><div className="answer-note"><b>Важно:</b> перед запуском реального сервиса нужно подключить специалиста, защищённое хранение обращений и платёжного провайдера.</div><button className="action-button" onClick={resetDemo}>Завершить консультацию</button></article></div>}
+          {stage === "answer" && <div className="answer-layer"><article className="answer-paper"><header><span>Ответ консультанта</span><strong>Консультация № {displayCode(consultationCode)}</strong></header><div className="consultant-stamp">КОНСУЛЬТАНТ<br/><b>ОТВЕТИЛ</b></div><h3>Ваш вопрос получен</h3><p>Это демонстрационный ответ. В рабочем сервисе здесь будет персональная консультация специалиста по вашему вопросу с понятным перечнем следующих шагов и необходимых документов.</p><div className="answer-note"><b>Важно:</b> перед запуском реального сервиса нужно подключить специалиста, защищённое хранение обращений и платёжного провайдера.</div><button className="action-button" onClick={resetDemo}>Завершить консультацию</button></article></div>}
         </div>
         <p className="demo-note">Интерактивный прототип: реального списания денег и юридической консультации не происходит.</p>
       </section>
