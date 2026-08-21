@@ -51,6 +51,15 @@ const server = createServer(async (request, response) => {
     const requestUrl = new URL(request.url ?? "/", `http://${host}`);
     const method = request.method ?? "GET";
 
+    if (requestUrl.pathname === "/health") {
+      response.writeHead(200, {
+        "content-type": "text/plain; charset=utf-8",
+        "cache-control": "no-store",
+      });
+      response.end("OK");
+      return;
+    }
+
     if (method === "GET" || method === "HEAD") {
       const staticResponse = await assetResponse(requestUrl.href);
       if (staticResponse.status !== 404) {
