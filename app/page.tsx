@@ -86,7 +86,13 @@ export default function Home() {
       </header>
 
       <section className="guide">
-        <div className="consultant" aria-hidden="true"><div className="consultant-head"><span className="glasses">▢ ▢</span></div><div className="consultant-body"><span className="badge">КОНСУЛЬТАНТ</span></div><div className="arm">☝</div></div>
+        <div className="consultant-portrait">
+          <div className="portrait-sun" aria-hidden="true">✦</div>
+          <div className="portrait-frame">
+            <img src="/consultant-v2.png" alt="Дружелюбный консультант по НДФЛ в квадратных очках указывает вниз" />
+          </div>
+          <div className="consultant-label"><span>Ваш консультант</span><strong>Анна</strong><small><i /> Сейчас на связи</small></div>
+        </div>
         <div className="guide-copy"><span className="mini-label">Ваш проводник</span><h2>Нужна консультация?<br/><span>Пройдите сюда.</span></h2><p>Три шага: войдите, оставьте вопрос, заберите ответ по своему коду.</p></div>
         <div className="dotted-arrow">↓</div>
       </section>
