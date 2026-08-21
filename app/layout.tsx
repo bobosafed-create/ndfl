@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://ndfl-prosto-help.bobosafed.chatgpt.site"),
   title: "Проблемы с НДФЛ — вам сюда",
   description: "Понятная консультация по НДФЛ за 100 ₽: задайте вопрос и получите ответ по персональному коду.",
   openGraph: {
