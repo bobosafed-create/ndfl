@@ -12,6 +12,8 @@ export default function Home() {
   const [safeCode, setSafeCode] = useState("");
   const [safeMessage, setSafeMessage] = useState("");
   const [answerReady, setAnswerReady] = useState(false);
+  const [codeNoticeVisible, setCodeNoticeVisible] = useState(false);
+  const [codeNoticeSeconds, setCodeNoticeSeconds] = useState(10);
 
   const deadline = useMemo(() => {
     const date = new Date(Date.now() + 60 * 60 * 1000);
@@ -45,13 +47,31 @@ export default function Home() {
 
   useEffect(() => {
     if (stage !== "waiting") return;
-    const timer = window.setTimeout(() => setAnswerReady(true), 7000);
+    const timer = window.setTimeout(() => setAnswerReady(true), 15000);
     return () => window.clearTimeout(timer);
   }, [stage]);
+
+  useEffect(() => {
+    if (stage !== "waiting" || !codeNoticeVisible) return;
+    const timer = window.setInterval(() => {
+      setCodeNoticeSeconds((seconds) => {
+        if (seconds <= 1) {
+          window.clearInterval(timer);
+          setCodeNoticeVisible(false);
+          return 0;
+        }
+        return seconds - 1;
+      });
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [stage, codeNoticeVisible]);
 
   function saveQuestion() {
     if (question.trim().length < 10) return;
     window.localStorage.setItem(`ndfl-question-${consultationCode}`, question.trim());
+    setCodeNoticeSeconds(10);
+    setCodeNoticeVisible(true);
+    setAnswerReady(false);
     setStage("waiting");
     setSafeMessage("");
   }
@@ -76,6 +96,8 @@ export default function Home() {
     setConsultationCode("");
     setSafeCode("");
     setAnswerReady(false);
+    setCodeNoticeVisible(false);
+    setCodeNoticeSeconds(10);
     setSafeMessage("");
   }
 
@@ -129,7 +151,11 @@ export default function Home() {
 
           {stage === "question" && <div className="desk-layer"><article className="question-paper"><header><span>Бланк вопроса</span><strong>Номер консультации (код) — <b>{displayCode(consultationCode)}</b></strong></header>{tipVisible && <div className="timed-tip"><b>Подсказка</b> Опишите кратко свой вопрос. Ответ будет дан в течение часа и появится в сейфе справа. Сохраните код: он создан специально для этой консультации.</div>}<label htmlFor="question">Ваш вопрос консультанту</label><textarea id="question" value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={1200} placeholder="Например: в 2025 году я продал квартиру. Нужно ли подавать декларацию и какие документы понадобятся?" autoFocus/><div className="paper-footer"><span>{question.length} / 1200</span><button className="action-button" disabled={question.trim().length < 10} onClick={saveQuestion}>Сохранить документ <b>✓</b></button></div></article></div>}
 
-          {stage === "waiting" && <div className="waiting-panel"><span className="seal">✓</span><h3>Вопрос сохранён</h3><p>Ответ будет подготовлен не позднее <strong>{deadline}</strong>. В этой демонстрации сейф загорится через несколько секунд.</p><div className="code-reminder">Ваш персональный код <strong>{displayCode(consultationCode)}</strong></div><label htmlFor="safe-code">Введите код на сейфе</label><div className="code-entry"><input id="safe-code" inputMode="numeric" autoComplete="one-time-code" maxLength={8} value={safeCode} onChange={(event) => setSafeCode(event.target.value.replace(/\D/g, ""))} placeholder="••••••••" aria-label="Восьмизначный код консультации"/><button onClick={openSafe}>Открыть</button></div>{safeMessage && <p className="safe-message" role="status">{safeMessage}</p>}</div>}
+          {stage === "waiting" && codeNoticeVisible && <div className="waiting-panel code-notice-panel"><span className="seal">✓</span><h3>Вопрос сохранён</h3><p>Ответ будет подготовлен не позднее <strong>{deadline}</strong>.</p><div className="code-reminder"><span>Ваш персональный код</span><strong>{displayCode(consultationCode)}</strong></div><div className="privacy-countdown"><b>Запомните код!</b><span>Для конфиденциальности окошко закроется через <strong>{codeNoticeSeconds}</strong> сек.</span></div></div>}
+
+          {stage === "waiting" && !codeNoticeVisible && !answerReady && <div className="pending-toast" role="status"><i />Вопрос принят. Ожидаем ответ консультанта.</div>}
+
+          {stage === "waiting" && !codeNoticeVisible && answerReady && <div className="safe-entry-panel"><span className="safe-entry-kicker">Ответ готов</span><h3>Откройте сейф</h3><p>Введите сохранённый персональный код консультации.</p><label htmlFor="safe-code">Код от сейфа</label><div className="code-entry"><input id="safe-code" inputMode="numeric" autoComplete="one-time-code" maxLength={8} value={safeCode} onChange={(event) => setSafeCode(event.target.value.replace(/\D/g, ""))} placeholder="••••••••" aria-label="Восьмизначный код консультации" autoFocus/><button onClick={openSafe}>Открыть</button></div>{safeMessage && <p className="safe-message" role="status">{safeMessage}</p>}</div>}
 
           {stage === "answer" && <div className="answer-layer"><article className="answer-paper"><header><span>Ответ консультанта</span><strong>Консультация № {displayCode(consultationCode)}</strong></header><div className="consultant-stamp">КОНСУЛЬТАНТ<br/><b>ОТВЕТИЛ</b></div><h3>Ваш вопрос получен</h3><p>Это демонстрационный ответ. В рабочем сервисе здесь будет персональная консультация специалиста по вашему вопросу с понятным перечнем следующих шагов и необходимых документов.</p><div className="answer-note"><b>Важно:</b> перед запуском реального сервиса нужно подключить специалиста, защищённое хранение обращений и платёжного провайдера.</div><button className="action-button" onClick={resetDemo}>Завершить консультацию</button></article></div>}
         </div>
