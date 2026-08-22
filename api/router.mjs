@@ -11,6 +11,10 @@ import {
   createYooKassaPayment,
   getYooKassaPayment,
 } from "../lib/yookassa.mjs";
+import {
+  createConsultationDraft,
+  openAiConfigured,
+} from "../lib/openai.mjs";
 
 const rateLimits = new Map();
 
@@ -346,6 +350,37 @@ async function consultantAnswer(request) {
   }
 }
 
+async function consultantAiDraft(request) {
+  if (!allowRequest("consultant-ai-draft", request, 10, 10 * 60_000) || !consultantAuthorized(request)) {
+    return json({ error: "unauthorized" }, 401);
+  }
+  if (!openAiConfigured()) return json({ error: "ai_not_configured" }, 503);
+
+  const input = await body(request);
+  if (!validUuid(input.consultationId)) return json({ error: "invalid_consultation" }, 400);
+  const database = getDatabasePool();
+  const result = await database.query(
+    `SELECT c.id, m.ciphertext, m.encryption_iv, m.authentication_tag
+     FROM consultations c
+     JOIN consultation_messages m ON m.consultation_id = c.id AND m.author = 'visitor'
+     WHERE c.id = $1 AND c.status IN ('question_submitted', 'answered')
+     ORDER BY m.created_at ASC
+     LIMIT 1`,
+    [input.consultationId],
+  );
+  const consultation = result.rows[0];
+  if (!consultation) return json({ error: "not_found" }, 404);
+
+  const question = decryptMessage(consultation.id, "visitor", consultation);
+  try {
+    const draft = await createConsultationDraft(question);
+    return json({ draft });
+  } catch (error) {
+    console.error(`OpenAI draft request failed: ${error?.code ?? "unknown_error"}`);
+    return json({ error: "ai_unavailable" }, 502);
+  }
+}
+
 async function consultantCalculations(request) {
   if (!allowRequest("consultant-calculations", request, 30) || !consultantAuthorized(request)) {
     return json({ error: "unauthorized" }, 401);
@@ -413,6 +448,7 @@ export async function routeApi(request) {
     if (route === "POST /api/consultations/question") return saveQuestion(request);
     if (route === "POST /api/consultations/answer") return openAnswer(request);
     if (route === "GET /api/consultant/consultations") return consultantList(request);
+    if (route === "POST /api/consultant/ai-draft") return consultantAiDraft(request);
     if (route === "POST /api/consultant/answer") return consultantAnswer(request);
     if (route === "GET /api/consultant/calculations") return consultantCalculations(request);
     if (route === "POST /api/consultant/calculations") return consultantCalculationCreate(request);

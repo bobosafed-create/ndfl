@@ -55,6 +55,7 @@ test("renders the consultant cabinet", async () => {
   assert.match(page, /type="password"/);
   assert.match(page, /Вернуться на сайт/);
   assert.match(page, /Калькулятор консультаций/);
-  assert.match(page, /Скопировать для ChatGPT/);
+  assert.match(page, /Подготовить черновик с ИИ/);
+  assert.match(page, /Скопировать вручную/);
   assert.match(page, /\/api\/consultant\/calculations/);
 });

@@ -29,6 +29,7 @@ export default function ConsultantCabinet() {
   const [calculationNote, setCalculationNote] = useState("");
   const [calculationEntries, setCalculationEntries] = useState<CalculationEntry[]>([]);
   const [calculationTotal, setCalculationTotal] = useState(0);
+  const [draftingId, setDraftingId] = useState<string | null>(null);
 
   async function load(key: string) {
     setLoading(true);
@@ -152,6 +153,30 @@ export default function ConsultantCabinet() {
     }
   }
 
+  async function createAiDraft(consultationId: string) {
+    if (draftingId) return;
+    setDraftingId(consultationId);
+    setMessage("");
+    try {
+      const response = await fetch("/api/consultant/ai-draft", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${accessKey}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ consultationId }),
+      });
+      const result = await response.json();
+      if (!response.ok || typeof result.draft !== "string") throw new Error(result.error ?? "draft_failed");
+      setAnswers((current) => ({ ...current, [consultationId]: result.draft }));
+      setMessage("Черновик подготовлен. Проверьте факты и при необходимости исправьте текст перед отправкой.");
+    } catch {
+      setMessage("Не удалось подготовить черновик. Проверьте ключ OpenAI, баланс API и повторите попытку.");
+    } finally {
+      setDraftingId(null);
+    }
+  }
+
   return (
     <main className="cabinet-page">
       <header className="cabinet-header">
@@ -205,7 +230,11 @@ export default function ConsultantCabinet() {
               <header><span>{item.status === "answered" ? "Ответ отправлен" : "Ждёт ответа"}</span><time>{item.answerDueAt ? `до ${new Date(item.answerDueAt).toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit"})}` : "срок уточняется"}</time></header>
               <h2>Вопрос посетителя</h2>
               <p>{item.question}</p>
-              <button className="copy-question" type="button" onClick={() => void copyQuestion(item.question)}>Скопировать для ChatGPT</button>
+              <div className="ai-draft-actions">
+                <button className="ai-draft-button" type="button" disabled={Boolean(draftingId)} onClick={() => void createAiDraft(item.id)}>{draftingId === item.id ? "Готовим черновик…" : "Подготовить черновик с ИИ"}</button>
+                <button className="copy-question" type="button" onClick={() => void copyQuestion(item.question)}>Скопировать вручную</button>
+              </div>
+              <p className="ai-review-note">Черновик не отправляется посетителю автоматически. Консультант проверяет факты, редактирует текст и сам нажимает «Отправить в сейф».</p>
               <label htmlFor={`answer-${item.id}`}>{item.status === "answered" ? "Дополнить ответ" : "Ответ консультанта"}</label>
               <textarea id={`answer-${item.id}`} maxLength={6000} value={answers[item.id] ?? ""} onChange={(event) => setAnswers((current) => ({...current, [item.id]: event.target.value}))} placeholder="Дайте понятный ответ и перечислите необходимые действия или документы." />
               <footer><span>{(answers[item.id] ?? "").length} / 6000</span><button className="action-button" disabled={(answers[item.id]?.trim().length ?? 0) < 10 || loading} onClick={() => void saveAnswer(item.id)}>Отправить в сейф</button></footer>
