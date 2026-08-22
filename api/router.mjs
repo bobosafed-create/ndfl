@@ -13,8 +13,8 @@ import {
 } from "../lib/yookassa.mjs";
 import {
   createConsultationDraft,
-  openAiConfigured,
-} from "../lib/openai.mjs";
+  aiConfigured,
+} from "../lib/ai.mjs";
 
 const rateLimits = new Map();
 
@@ -354,7 +354,7 @@ async function consultantAiDraft(request) {
   if (!allowRequest("consultant-ai-draft", request, 10, 10 * 60_000) || !consultantAuthorized(request)) {
     return json({ error: "unauthorized" }, 401);
   }
-  if (!openAiConfigured()) return json({ error: "ai_not_configured" }, 503);
+  if (!aiConfigured()) return json({ error: "ai_not_configured" }, 503);
 
   const input = await body(request);
   if (!validUuid(input.consultationId)) return json({ error: "invalid_consultation" }, 400);
@@ -376,7 +376,7 @@ async function consultantAiDraft(request) {
     const draft = await createConsultationDraft(question);
     return json({ draft });
   } catch (error) {
-    console.error(`OpenAI draft request failed: ${error?.code ?? "unknown_error"}`);
+    console.error(`AI draft request failed: ${error?.code ?? "unknown_error"}`);
     return json({ error: "ai_unavailable" }, 502);
   }
 }

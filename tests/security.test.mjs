@@ -60,13 +60,15 @@ test("consultant calculations require the consultant key", async () => {
 
 test("AI drafts are server-side, authenticated and never sent directly to the visitor", async () => {
   const router = await readFile(new URL("../api/router.mjs", import.meta.url), "utf8");
-  const openai = await readFile(new URL("../lib/openai.mjs", import.meta.url), "utf8");
+  const ai = await readFile(new URL("../lib/ai.mjs", import.meta.url), "utf8");
   const cabinet = await readFile(new URL("../app/consultant/page.tsx", import.meta.url), "utf8");
   assert.match(router, /consultantAiDraft/);
   assert.match(router, /consultantAuthorized\(request\)/);
-  assert.match(openai, /process\.env\.OPENAI_API_KEY/);
-  assert.match(openai, /store: false/);
-  assert.doesNotMatch(cabinet, /OPENAI_API_KEY/);
+  assert.match(ai, /process\.env\.TIMEWEB_AI_API_KEY/);
+  assert.match(ai, /api\.timeweb\.ai\/v1/);
+  assert.match(ai, /chat\/completions/);
+  assert.match(ai, /dashscope\/qwen3\.5-plus/);
+  assert.doesNotMatch(cabinet, /TIMEWEB_AI_API_KEY/);
   assert.match(cabinet, /Подготовить черновик с ИИ/);
   assert.match(cabinet, /Отправить в сейф/);
 });

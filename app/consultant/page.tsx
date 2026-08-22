@@ -171,7 +171,7 @@ export default function ConsultantCabinet() {
       setAnswers((current) => ({ ...current, [consultationId]: result.draft }));
       setMessage("Черновик подготовлен. Проверьте факты и при необходимости исправьте текст перед отправкой.");
     } catch {
-      setMessage("Не удалось подготовить черновик. Проверьте ключ OpenAI, баланс API и повторите попытку.");
+      setMessage("Не удалось подготовить черновик. Проверьте ключ AI Gateway, баланс Timeweb и повторите попытку.");
     } finally {
       setDraftingId(null);
     }
