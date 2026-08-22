@@ -103,6 +103,6 @@ const server = createServer(async (request, response) => {
   }
 });
 
-server.listen(port, "0.0.0.0", () => {
+server.listen(port, () => {
   console.log(`NDFL site is running on port ${port}`);
 });
