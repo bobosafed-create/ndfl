@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import worker from "./dist/server/index.js";
+import { checkDatabase, initializeDatabase } from "./db/postgres.mjs";
 
 const port = Number(process.env.PORT ?? 3000);
 const clientRoot = join(process.cwd(), "dist", "client");
@@ -60,6 +61,17 @@ const server = createServer(async (request, response) => {
       return;
     }
 
+    if (requestUrl.pathname === "/api/health/database") {
+      const databaseStatus = await checkDatabase();
+      const statusCode = databaseStatus.status === "ok" ? 200 : 503;
+      response.writeHead(statusCode, {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store",
+      });
+      response.end(JSON.stringify(databaseStatus));
+      return;
+    }
+
     if (method === "GET" || method === "HEAD") {
       const staticResponse = await assetResponse(requestUrl.href);
       if (staticResponse.status !== 404) {
@@ -103,6 +115,12 @@ const server = createServer(async (request, response) => {
   }
 });
 
-server.listen(port, () => {
-  console.log(`NDFL site is running on port ${port}`);
-});
+try {
+  await initializeDatabase();
+  server.listen(port, () => {
+    console.log(`NDFL site is running on port ${port}`);
+  });
+} catch {
+  console.error("PostgreSQL initialization failed; the server was not started");
+  process.exitCode = 1;
+}
