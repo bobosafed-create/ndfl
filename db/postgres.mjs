@@ -75,6 +75,20 @@ const migrations = [
         ON consultant_calculations (created_at DESC)`,
     ],
   },
+  {
+    version: 3,
+    statements: [
+      `ALTER TABLE consultations
+        DROP CONSTRAINT IF EXISTS consultations_status_check`,
+      `ALTER TABLE consultations
+        ADD CONSTRAINT consultations_status_check
+        CHECK (status IN ('awaiting_payment', 'paid', 'question_submitted', 'answered', 'archived', 'closed', 'cancelled'))`,
+      `ALTER TABLE consultations
+        ADD COLUMN IF NOT EXISTS archived_at timestamptz`,
+      `CREATE INDEX IF NOT EXISTS consultations_archive_idx
+        ON consultations (status, archived_at DESC)`,
+    ],
+  },
 ];
 
 function missingDatabaseVariables() {

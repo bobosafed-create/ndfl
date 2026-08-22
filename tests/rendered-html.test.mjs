@@ -56,6 +56,10 @@ test("renders the consultant cabinet", async () => {
   assert.match(page, /Вернуться на сайт/);
   assert.match(page, /Калькулятор консультаций/);
   assert.match(page, /Подготовить черновик с ИИ/);
-  assert.match(page, /Скопировать вручную/);
+  assert.match(page, /Скопировать вопрос/);
   assert.match(page, /\/api\/consultant\/calculations/);
+  assert.match(page, /Архив консультаций/);
+  assert.match(page, /Удалить вопрос и ответ/);
+  assert.match(page, /window\.location\.assign\("\/#room"\)/);
+  assert.match(page, /window\.print/);
 });

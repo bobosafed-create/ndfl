@@ -289,26 +289,119 @@ async function consultantList(request) {
   if (!allowRequest("consultant", request, 30) || !consultantAuthorized(request)) {
     return json({ error: "unauthorized" }, 401);
   }
+  const view = new URL(request.url).searchParams.get("view") === "archive" ? "archive" : "active";
   const database = getDatabasePool();
   const result = await database.query(
-    `SELECT c.id, c.status, c.answer_due_at, c.created_at,
-            m.ciphertext, m.encryption_iv, m.authentication_tag
+    `SELECT c.id, c.status, c.answer_due_at, c.created_at, c.archived_at,
+            visitor.ciphertext, visitor.encryption_iv, visitor.authentication_tag,
+            answer.ciphertext AS answer_ciphertext,
+            answer.encryption_iv AS answer_encryption_iv,
+            answer.authentication_tag AS answer_authentication_tag
      FROM consultations c
-     JOIN consultation_messages m ON m.consultation_id = c.id AND m.author = 'visitor'
-     WHERE c.status IN ('question_submitted', 'answered')
+     JOIN LATERAL (
+       SELECT ciphertext, encryption_iv, authentication_tag
+       FROM consultation_messages
+       WHERE consultation_id = c.id AND author = 'visitor'
+       ORDER BY created_at ASC LIMIT 1
+     ) visitor ON true
+     LEFT JOIN LATERAL (
+       SELECT ciphertext, encryption_iv, authentication_tag
+       FROM consultation_messages
+       WHERE consultation_id = c.id AND author = 'consultant'
+       ORDER BY created_at DESC LIMIT 1
+     ) answer ON true
+     WHERE ($1 = 'archive' AND c.status = 'archived')
+        OR ($1 = 'active' AND c.status IN ('question_submitted', 'answered'))
      ORDER BY CASE WHEN c.status = 'question_submitted' THEN 0 ELSE 1 END,
-              c.answer_due_at ASC
+              CASE WHEN $1 = 'active' THEN c.answer_due_at END ASC NULLS LAST,
+              CASE WHEN $1 = 'archive' THEN c.archived_at END DESC NULLS LAST,
+              c.created_at DESC
      LIMIT 100`,
+    [view],
+  );
+  const countsResult = await database.query(
+    `SELECT
+       count(*) FILTER (WHERE status IN ('question_submitted', 'answered'))::integer AS active,
+       count(*) FILTER (WHERE status = 'archived')::integer AS archive
+     FROM consultations`,
   );
   return json({
+    counts: countsResult.rows[0],
     consultations: result.rows.map((row) => ({
       id: row.id,
       status: row.status,
       answerDueAt: row.answer_due_at,
       createdAt: row.created_at,
+      archivedAt: row.archived_at,
       question: decryptMessage(row.id, "visitor", row),
+      answer: row.answer_ciphertext ? decryptMessage(row.id, "consultant", {
+        ciphertext: row.answer_ciphertext,
+        encryption_iv: row.answer_encryption_iv,
+        authentication_tag: row.answer_authentication_tag,
+      }) : null,
     })),
   });
+}
+
+async function consultantArchive(request) {
+  if (!allowRequest("consultant-archive", request, 30) || !consultantAuthorized(request)) {
+    return json({ error: "unauthorized" }, 401);
+  }
+  const input = await body(request);
+  if (!validUuid(input.consultationId) || typeof input.archived !== "boolean") {
+    return json({ error: "invalid_consultation" }, 400);
+  }
+  const database = getDatabasePool();
+  const result = input.archived
+    ? await database.query(
+      `UPDATE consultations SET status = 'archived', archived_at = now(), updated_at = now()
+       WHERE id = $1 AND status = 'answered' RETURNING id`,
+      [input.consultationId],
+    )
+    : await database.query(
+      `UPDATE consultations SET status = 'answered', archived_at = NULL, updated_at = now()
+       WHERE id = $1 AND status = 'archived' RETURNING id`,
+      [input.consultationId],
+    );
+  if (!result.rows[0]) return json({ error: "not_found" }, 404);
+  return json({ saved: true });
+}
+
+async function consultantDelete(request) {
+  if (!allowRequest("consultant-delete", request, 20) || !consultantAuthorized(request)) {
+    return json({ error: "unauthorized" }, 401);
+  }
+  const input = await body(request);
+  if (!validUuid(input.consultationId)) return json({ error: "invalid_consultation" }, 400);
+  const database = getDatabasePool();
+  const client = await database.connect();
+  try {
+    await client.query("BEGIN");
+    const consultation = await client.query(
+      `SELECT id FROM consultations
+       WHERE id = $1 AND status IN ('question_submitted', 'answered', 'archived')
+       FOR UPDATE`,
+      [input.consultationId],
+    );
+    if (!consultation.rows[0]) {
+      await client.query("ROLLBACK");
+      return json({ error: "not_found" }, 404);
+    }
+    await client.query("DELETE FROM consultation_messages WHERE consultation_id = $1", [input.consultationId]);
+    await client.query(
+      `UPDATE consultations
+       SET status = 'closed', archived_at = NULL, updated_at = now()
+       WHERE id = $1`,
+      [input.consultationId],
+    );
+    await client.query("COMMIT");
+    return json({ deleted: true });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 async function consultantAnswer(request) {
@@ -448,6 +541,8 @@ export async function routeApi(request) {
     if (route === "POST /api/consultations/question") return saveQuestion(request);
     if (route === "POST /api/consultations/answer") return openAnswer(request);
     if (route === "GET /api/consultant/consultations") return consultantList(request);
+    if (route === "POST /api/consultant/archive") return consultantArchive(request);
+    if (route === "DELETE /api/consultant/consultations") return consultantDelete(request);
     if (route === "POST /api/consultant/ai-draft") return consultantAiDraft(request);
     if (route === "POST /api/consultant/answer") return consultantAnswer(request);
     if (route === "GET /api/consultant/calculations") return consultantCalculations(request);

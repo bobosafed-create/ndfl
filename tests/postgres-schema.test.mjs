@@ -34,3 +34,9 @@ test("consultant calculator entries are stored durably", () => {
   assert.match(source, /amount_kopecks integer NOT NULL/);
   assert.match(source, /note varchar\(120\)/);
 });
+
+test("completed consultations can be archived without exposing their contents", () => {
+  assert.match(source, /'archived'/);
+  assert.match(source, /archived_at timestamptz/);
+  assert.match(source, /consultations_archive_idx/);
+});

@@ -72,3 +72,20 @@ test("AI drafts are server-side, authenticated and never sent directly to the vi
   assert.match(cabinet, /Подготовить черновик с ИИ/);
   assert.match(cabinet, /Отправить в сейф/);
 });
+
+test("AI draft formatting removes Markdown stars before editing", async () => {
+  const { cleanDraftFormatting } = await import("../lib/ai.mjs");
+  assert.equal(
+    cleanDraftFormatting("**Краткий вывод**\n* Первый шаг\n*важно*"),
+    "Краткий вывод\n• Первый шаг\nважно",
+  );
+});
+
+test("consultant archive and deletion remain authenticated server operations", async () => {
+  const router = await readFile(new URL("../api/router.mjs", import.meta.url), "utf8");
+  assert.match(router, /consultantArchive/);
+  assert.match(router, /consultantDelete/);
+  assert.match(router, /DELETE FROM consultation_messages/);
+  assert.match(router, /status = 'closed'/);
+  assert.match(router, /consultantAuthorized\(request\)/);
+});
