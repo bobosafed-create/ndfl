@@ -28,3 +28,9 @@ test("connection diagnostics expose only a fixed safe error category", () => {
   assert.match(source, /return "unknown_error"/);
   assert.doesNotMatch(source, /console\.(?:log|error)\([^\n]*error\.message/);
 });
+
+test("consultant calculator entries are stored durably", () => {
+  assert.match(source, /CREATE TABLE IF NOT EXISTS consultant_calculations/);
+  assert.match(source, /amount_kopecks integer NOT NULL/);
+  assert.match(source, /note varchar\(120\)/);
+});

@@ -50,3 +50,10 @@ test("payment request does not collect or transmit visitor contacts", async () =
   assert.doesNotMatch(payment, /customer|receiptEmail|phone|vat_code/);
   assert.match(payment, /amount: \{ value: "100\.00", currency: "RUB" \}/);
 });
+
+test("consultant calculations require the consultant key", async () => {
+  const router = await readFile(new URL("../api/router.mjs", import.meta.url), "utf8");
+  assert.match(router, /consultantCalculations/);
+  assert.match(router, /consultantCalculationCreate/);
+  assert.match(router, /consultantAuthorized\(request\)/);
+});

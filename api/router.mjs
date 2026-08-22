@@ -346,6 +346,50 @@ async function consultantAnswer(request) {
   }
 }
 
+async function consultantCalculations(request) {
+  if (!allowRequest("consultant-calculations", request, 30) || !consultantAuthorized(request)) {
+    return json({ error: "unauthorized" }, 401);
+  }
+  const database = getDatabasePool();
+  const result = await database.query(
+    `SELECT id, amount_kopecks, note, created_at
+     FROM consultant_calculations
+     ORDER BY created_at DESC
+     LIMIT 100`,
+  );
+  const totalResult = await database.query(
+    "SELECT COALESCE(SUM(amount_kopecks), 0)::bigint AS total_kopecks FROM consultant_calculations",
+  );
+  return json({
+    totalKopecks: Number(totalResult.rows[0].total_kopecks),
+    entries: result.rows.map((row) => ({
+      id: row.id,
+      amountKopecks: row.amount_kopecks,
+      note: row.note,
+      createdAt: row.created_at,
+    })),
+  });
+}
+
+async function consultantCalculationCreate(request) {
+  if (!allowRequest("consultant-calculations-write", request, 20) || !consultantAuthorized(request)) {
+    return json({ error: "unauthorized" }, 401);
+  }
+  const input = await body(request);
+  const amountRubles = Number(input.amountRubles);
+  const note = typeof input.note === "string" ? input.note.trim() : "";
+  if (!Number.isInteger(amountRubles) || amountRubles < 1 || amountRubles > 1_000_000 || note.length > 120) {
+    return json({ error: "invalid_calculation" }, 400);
+  }
+  const database = getDatabasePool();
+  await database.query(
+    `INSERT INTO consultant_calculations (id, amount_kopecks, note)
+     VALUES ($1, $2, $3)`,
+    [randomUUID(), amountRubles * 100, note],
+  );
+  return json({ saved: true }, 201);
+}
+
 async function webhook(request) {
   const input = await body(request);
   const paymentId = input?.object?.id;
@@ -370,6 +414,8 @@ export async function routeApi(request) {
     if (route === "POST /api/consultations/answer") return openAnswer(request);
     if (route === "GET /api/consultant/consultations") return consultantList(request);
     if (route === "POST /api/consultant/answer") return consultantAnswer(request);
+    if (route === "GET /api/consultant/calculations") return consultantCalculations(request);
+    if (route === "POST /api/consultant/calculations") return consultantCalculationCreate(request);
     if (route === "POST /api/yookassa/webhook") return webhook(request);
     return null;
   } catch (error) {

@@ -62,6 +62,19 @@ const migrations = [
         ON consultation_messages (consultation_id, created_at)`,
     ],
   },
+  {
+    version: 2,
+    statements: [
+      `CREATE TABLE IF NOT EXISTS consultant_calculations (
+        id uuid PRIMARY KEY,
+        amount_kopecks integer NOT NULL CHECK (amount_kopecks > 0 AND amount_kopecks <= 100000000),
+        note varchar(120) NOT NULL DEFAULT '',
+        created_at timestamptz NOT NULL DEFAULT now()
+      )`,
+      `CREATE INDEX IF NOT EXISTS consultant_calculations_created_idx
+        ON consultant_calculations (created_at DESC)`,
+    ],
+  },
 ];
 
 function missingDatabaseVariables() {
