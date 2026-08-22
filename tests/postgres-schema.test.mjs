@@ -40,3 +40,11 @@ test("completed consultations can be archived without exposing their contents", 
   assert.match(source, /archived_at timestamptz/);
   assert.match(source, /consultations_archive_idx/);
 });
+
+test("dynamic price and encrypted attachments have durable schema", () => {
+  assert.match(source, /CREATE TABLE IF NOT EXISTS site_settings/);
+  assert.match(source, /consultation_price_kopecks integer NOT NULL/);
+  assert.match(source, /CREATE TABLE IF NOT EXISTS consultation_attachments/);
+  assert.match(source, /size_bytes integer NOT NULL/);
+  assert.match(source, /UNIQUE \(consultation_id, ordinal\)/);
+});

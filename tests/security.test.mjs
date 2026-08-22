@@ -48,14 +48,29 @@ test("API verifies YooKassa status server-side and limits code attempts", async 
 test("payment request does not collect or transmit visitor contacts", async () => {
   const payment = await readFile(new URL("../lib/yookassa.mjs", import.meta.url), "utf8");
   assert.doesNotMatch(payment, /customer|receiptEmail|phone|vat_code/);
-  assert.match(payment, /amount: \{ value: "100\.00", currency: "RUB" \}/);
+  assert.match(payment, /amountKopecks \/ 100/);
+  assert.match(payment, /toFixed\(2\)/);
 });
 
 test("consultant calculations require the consultant key", async () => {
   const router = await readFile(new URL("../api/router.mjs", import.meta.url), "utf8");
   assert.match(router, /consultantCalculations/);
   assert.match(router, /consultantCalculationCreate/);
+  assert.match(router, /consultantCalculationDelete/);
   assert.match(router, /consultantAuthorized\(request\)/);
+});
+
+test("attachments are encrypted, type-checked and consultant-only", async () => {
+  const router = await readFile(new URL("../api/router.mjs", import.meta.url), "utf8");
+  assert.match(router, /detectAttachment/);
+  assert.match(router, /encryptBinary/);
+  assert.match(router, /consultantAttachment/);
+  assert.match(router, /consultantAuthorized\(request\)/);
+  const encrypted = security.encryptBinary("4b593eac-8d19-4a28-9c44-8c58d151592c", "file-id", Buffer.from("document"));
+  const decrypted = security.decryptBinary("4b593eac-8d19-4a28-9c44-8c58d151592c", "file-id", {
+    ciphertext: encrypted.ciphertext, encryption_iv: encrypted.iv, authentication_tag: encrypted.authenticationTag,
+  });
+  assert.equal(decrypted.toString(), "document");
 });
 
 test("AI drafts are server-side, authenticated and never sent directly to the visitor", async () => {

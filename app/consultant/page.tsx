@@ -11,6 +11,7 @@ type Consultation = {
   archivedAt: string | null;
   question: string;
   answer: string | null;
+  attachments: { id: string; name: string; mimeType: string; size: number }[];
 };
 
 type CalculationEntry = { id: string; amountKopecks: number; note: string; createdAt: string };
@@ -27,7 +28,6 @@ export default function ConsultantCabinet() {
   const [loading, setLoading] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [calculationValue, setCalculationValue] = useState("100");
-  const [calculationNote, setCalculationNote] = useState("");
   const [calculationEntries, setCalculationEntries] = useState<CalculationEntry[]>([]);
   const [calculationTotal, setCalculationTotal] = useState(0);
   const [draftingId, setDraftingId] = useState<string | null>(null);
@@ -54,6 +54,7 @@ export default function ConsultantCabinet() {
       });
       setCalculationEntries(calculationsResult.entries);
       setCalculationTotal(calculationsResult.totalKopecks);
+      setCalculationValue(String((calculationsResult.currentPriceKopecks ?? 10000) / 100));
       setAuthenticated(true);
       window.sessionStorage.setItem("ndfl-consultant-key", key);
     } catch {
@@ -123,7 +124,7 @@ export default function ConsultantCabinet() {
   }
 
   async function deleteConsultation(consultationId: string) {
-    const confirmed = window.confirm("Навсегда удалить текст вопроса и ответа? Платёжная запись останется без текста консультации.");
+    const confirmed = window.confirm("Навсегда удалить вопрос, ответ и приложенные документы? Платёжная запись останется без содержания консультации.");
     if (!confirmed) return;
     setLoading(true);
     setMessage("");
@@ -136,7 +137,7 @@ export default function ConsultantCabinet() {
       if (!response.ok) throw new Error("delete_failed");
       setAnswers((current) => { const next = { ...current }; delete next[consultationId]; return next; });
       await load(accessKey, view);
-      setMessage("Текст вопроса и ответа удалён без возможности восстановления.");
+      setMessage("Вопрос, ответ и приложенные документы удалены без возможности восстановления.");
     } catch {
       setMessage("Не удалось удалить консультацию. Повторите попытку.");
     } finally {
@@ -163,13 +164,38 @@ export default function ConsultantCabinet() {
       const response = await fetch("/api/consultant/calculations", {
         method: "POST",
         headers: { authorization: `Bearer ${accessKey}`, "content-type": "application/json" },
-        body: JSON.stringify({ amountRubles, note: calculationNote }),
+        body: JSON.stringify({ amountRubles }),
       });
       if (!response.ok) throw new Error("save_failed");
-      setCalculationValue("100"); setCalculationNote(""); await load(accessKey, view);
-      setMessage("Сумма добавлена во внутренний расчёт.");
+      await load(accessKey, view);
+      setMessage(`Новая цена ${amountRubles.toLocaleString("ru-RU")} ₽ установлена. Она применяется только к новым платежам.`);
     } catch { setMessage("Не удалось сохранить сумму. Повторите попытку."); }
     finally { setLoading(false); }
+  }
+
+  async function deleteCalculation(id: string) {
+    if (!window.confirm("Удалить эту старую тестовую сумму?")) return;
+    setLoading(true); setMessage("");
+    try {
+      const response = await fetch("/api/consultant/calculations", {
+        method: "DELETE",
+        headers: { authorization: `Bearer ${accessKey}`, "content-type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (!response.ok) throw new Error("delete_failed");
+      await load(accessKey, view); setMessage("Тестовая сумма удалена.");
+    } catch { setMessage("Не удалось удалить тестовую сумму."); }
+    finally { setLoading(false); }
+  }
+
+  async function downloadAttachment(attachment: Consultation["attachments"][number]) {
+    try {
+      const response = await fetch(`/api/consultant/attachments?id=${encodeURIComponent(attachment.id)}`, { headers: { authorization: `Bearer ${accessKey}` } });
+      if (!response.ok) throw new Error("download_failed");
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a"); link.href = url; link.download = attachment.name; link.click();
+      URL.revokeObjectURL(url);
+    } catch { setMessage("Не удалось скачать документ."); }
   }
 
   async function copyQuestion(question: string) {
@@ -221,16 +247,16 @@ export default function ConsultantCabinet() {
 
           <section className="consultation-calculator" aria-labelledby="calculator-title">
             <div className="calculator-machine">
-              <div className="calculator-topline"><span>Внутренний расчёт</span><span>₽</span></div><h2 id="calculator-title">Калькулятор консультаций</h2>
+              <div className="calculator-topline"><span>Цена на сайте</span><span>₽</span></div><h2 id="calculator-title">Стоимость консультации</h2>
               <output aria-live="polite">{Number(calculationValue || 0).toLocaleString("ru-RU")} ₽</output>
               <div className="calculator-keys">{["7", "8", "9", "4", "5", "6", "1", "2", "3", "C", "0", "⌫"].map((key) => <button className={key === "C" ? "calculator-clear" : ""} key={key} type="button" onClick={() => pressCalculator(key)}>{key}</button>)}</div>
-              <label htmlFor="calculation-note">Пометка</label><input id="calculation-note" maxLength={120} value={calculationNote} onChange={(event) => setCalculationNote(event.target.value)} placeholder="Например: консультация № 14" />
-              <button className="calculator-save" type="button" disabled={Number(calculationValue) < 1 || loading} onClick={() => void saveCalculation()}>+ Записать сумму</button>
+              <button className="calculator-save" type="button" disabled={Number(calculationValue) < 1 || loading} onClick={() => void saveCalculation()}>Установить цену на сайте</button>
+              <p className="calculator-disclaimer">Цена применяется к платежам, созданным после нажатия кнопки. Уже созданные платежи не изменяются.</p>
             </div>
 
             <div className="calculation-ledger">
-              <span className="mini-label">Сохранённые суммы</span><strong>{(calculationTotal / 100).toLocaleString("ru-RU")} ₽</strong><small>{calculationEntries.length} последних записей</small>
-              <div className="calculation-list compact">{calculationEntries.length === 0 ? <p>Записей пока нет.</p> : calculationEntries.slice(0, 4).map((entry) => <div key={entry.id}><span>{entry.note || "Консультация"}<time>{new Date(entry.createdAt).toLocaleDateString("ru-RU")}</time></span><b>{(entry.amountKopecks / 100).toLocaleString("ru-RU")} ₽</b></div>)}</div>
+              <span className="mini-label">Старые тестовые записи</span><strong>{(calculationTotal / 100).toLocaleString("ru-RU")} ₽</strong><small>{calculationEntries.length} записей — они не являются платежами ЮKassa</small>
+              <div className="calculation-list compact">{calculationEntries.length === 0 ? <p>Тестовых записей нет.</p> : calculationEntries.map((entry) => <div key={entry.id}><span>{entry.note || "Тестовая сумма"}<time>{new Date(entry.createdAt).toLocaleDateString("ru-RU")}</time></span><b>{(entry.amountKopecks / 100).toLocaleString("ru-RU")} ₽</b><button className="ledger-delete" type="button" disabled={loading} onClick={() => void deleteCalculation(entry.id)}>×</button></div>)}</div>
               <div className="consultation-index-heading"><span className="mini-label">Перечень консультаций</span><div className="archive-tabs"><button type="button" className={view === "active" ? "active" : ""} onClick={() => void switchView("active")}>В работе · {counts.active}</button><button type="button" className={view === "archive" ? "active" : ""} onClick={() => void switchView("archive")}>Архив · {counts.archive}</button></div></div>
               <div className="consultation-index">{consultations.length === 0 ? <p>{view === "archive" ? "Архив пока пуст." : "Новых вопросов пока нет."}</p> : consultations.map((item, index) => <button type="button" className={item.id === selectedId ? "selected" : ""} key={item.id} onClick={() => setSelectedId(item.id)}><span>№ {String(index + 1).padStart(2, "0")} · {item.status === "question_submitted" ? "ждёт ответа" : item.status === "archived" ? "в архиве" : "выполнено"}</span><small>{new Date(item.createdAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</small></button>)}</div>
               <p className="calculator-disclaimer">Архив открывается здесь же, без дополнительного пароля.</p>
@@ -241,6 +267,7 @@ export default function ConsultantCabinet() {
             <article className={`consultation-editor ${selected.status}`} key={selected.id}>
               <header><div><span className="mini-label">Консультация</span><h2>{selected.status === "archived" ? "Архивная запись" : selected.status === "answered" ? "Выполненная консультация" : "Новый вопрос"}</h2></div><div className="consultation-status"><b>{selected.status === "question_submitted" ? "Ждёт ответа" : selected.status === "archived" ? "Архив" : "Ответ отправлен"}</b><time>{selected.answerDueAt ? `срок до ${new Date(selected.answerDueAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}` : "без срока"}</time></div></header>
               <section className="consultation-document question-document"><h3>Вопрос посетителя</h3><p>{selected.question}</p></section>
+              {selected.attachments.length > 0 && <section className="consultation-attachments no-print"><h3>Приложенные документы</h3>{selected.attachments.map((attachment) => <button type="button" key={attachment.id} onClick={() => void downloadAttachment(attachment)}><span>📎 {attachment.name}</span><small>{(attachment.size / 1024).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} КБ · скачать</small></button>)}</section>}
               {selected.status === "archived" ? <section className="consultation-document answer-document"><h3>Ответ консультанта</h3><p>{selected.answer || "Ответ отсутствует."}</p></section> : <>
                 <div className="ai-draft-actions no-print"><button className="ai-draft-button" type="button" disabled={Boolean(draftingId)} onClick={() => void createAiDraft(selected.id)}>{draftingId === selected.id ? "Готовим черновик…" : "Подготовить черновик с ИИ"}</button><button className="copy-question" type="button" onClick={() => void copyQuestion(selected.question)}>Скопировать вопрос</button></div>
                 <p className="ai-review-note no-print">ИИ создаёт обычный текст без звёздочек. Черновик не отправляется автоматически: проверьте и отредактируйте его.</p>

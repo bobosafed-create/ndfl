@@ -89,6 +89,37 @@ const migrations = [
         ON consultations (status, archived_at DESC)`,
     ],
   },
+  {
+    version: 4,
+    statements: [
+      `ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_amount_kopecks_check`,
+      `ALTER TABLE payments ADD CONSTRAINT payments_amount_kopecks_check
+        CHECK (amount_kopecks >= 100 AND amount_kopecks <= 100000000)`,
+      `CREATE TABLE IF NOT EXISTS site_settings (
+        singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+        consultation_price_kopecks integer NOT NULL
+          CHECK (consultation_price_kopecks >= 100 AND consultation_price_kopecks <= 100000000),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      )`,
+      `INSERT INTO site_settings (singleton, consultation_price_kopecks)
+        VALUES (true, 10000) ON CONFLICT (singleton) DO NOTHING`,
+      `CREATE TABLE IF NOT EXISTS consultation_attachments (
+        id uuid PRIMARY KEY,
+        consultation_id uuid NOT NULL REFERENCES consultations(id) ON DELETE RESTRICT,
+        ordinal smallint NOT NULL CHECK (ordinal BETWEEN 1 AND 5),
+        extension varchar(8) NOT NULL CHECK (extension IN ('pdf', 'doc', 'docx', 'jpg', 'png', 'webp')),
+        mime_type varchar(100) NOT NULL,
+        size_bytes integer NOT NULL CHECK (size_bytes > 0 AND size_bytes <= 5242880),
+        ciphertext bytea NOT NULL,
+        encryption_iv bytea NOT NULL,
+        authentication_tag bytea NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        UNIQUE (consultation_id, ordinal)
+      )`,
+      `CREATE INDEX IF NOT EXISTS consultation_attachments_consultation_idx
+        ON consultation_attachments (consultation_id, ordinal)`,
+    ],
+  },
 ];
 
 function missingDatabaseVariables() {

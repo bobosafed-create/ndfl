@@ -3,7 +3,9 @@ import { getDatabasePool } from "../db/postgres.mjs";
 import {
   consultationHash,
   consultantKeyMatches,
+  decryptBinary,
   decryptMessage,
+  encryptBinary,
   encryptMessage,
   randomToken,
 } from "../lib/security.mjs";
@@ -65,6 +67,27 @@ function codeHash(consultationId, code) {
   return consultationHash(`${consultationId}:code:${code}`);
 }
 
+async function publicPrice() {
+  const database = getDatabasePool();
+  if (!database) return json({ error: "service_unavailable" }, 503);
+  const result = await database.query(
+    "SELECT consultation_price_kopecks FROM site_settings WHERE singleton = true",
+  );
+  return json({ amountKopecks: result.rows[0]?.consultation_price_kopecks ?? 10000 });
+}
+
+function detectAttachment(buffer, filename) {
+  const extension = String(filename ?? "").split(".").pop()?.toLowerCase();
+  const starts = (...bytes) => bytes.every((byte, index) => buffer[index] === byte);
+  if (extension === "pdf" && buffer.subarray(0, 5).toString("ascii") === "%PDF-") return { extension, mimeType: "application/pdf" };
+  if (extension === "doc" && starts(0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1)) return { extension, mimeType: "application/msword" };
+  if (extension === "docx" && starts(0x50, 0x4b, 0x03, 0x04)) return { extension, mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" };
+  if (["jpg", "jpeg"].includes(extension) && starts(0xff, 0xd8, 0xff)) return { extension: "jpg", mimeType: "image/jpeg" };
+  if (extension === "png" && starts(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return { extension, mimeType: "image/png" };
+  if (extension === "webp" && buffer.subarray(0, 4).toString("ascii") === "RIFF" && buffer.subarray(8, 12).toString("ascii") === "WEBP") return { extension, mimeType: "image/webp" };
+  return null;
+}
+
 async function createPayment(request) {
   if (!allowRequest("payment", request, 5, 10 * 60_000)) {
     return json({ error: "too_many_requests" }, 429);
@@ -79,6 +102,10 @@ async function createPayment(request) {
   const browserToken = randomToken();
   const code = String(randomInt(1000, 10000));
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const priceResult = await database.query(
+    "SELECT consultation_price_kopecks FROM site_settings WHERE singleton = true",
+  );
+  const amountKopecks = priceResult.rows[0]?.consultation_price_kopecks ?? 10000;
 
   const client = await database.connect();
   try {
@@ -97,8 +124,8 @@ async function createPayment(request) {
     await client.query(
       `INSERT INTO payments
         (id, consultation_id, idempotency_key, amount_kopecks)
-       VALUES ($1, $2, $3, 10000)`,
-      [paymentId, consultationId, idempotencyKey],
+       VALUES ($1, $2, $3, $4)`,
+      [paymentId, consultationId, idempotencyKey, amountKopecks],
     );
     await client.query("COMMIT");
   } catch (error) {
@@ -109,7 +136,7 @@ async function createPayment(request) {
   }
 
   try {
-    const payment = await createYooKassaPayment({ consultationId, idempotencyKey });
+    const payment = await createYooKassaPayment({ consultationId, idempotencyKey, amountKopecks });
     const confirmationUrl = payment?.confirmation?.confirmation_url;
     if (!payment?.id || !confirmationUrl || !confirmationUrl.startsWith("https://")) {
       throw new Error("invalid_yookassa_response");
@@ -119,7 +146,7 @@ async function createPayment(request) {
        WHERE id = $3`,
       [payment.id, payment.status ?? "pending", paymentId],
     );
-    return json({ consultationId, browserToken, code, confirmationUrl }, 201);
+    return json({ consultationId, browserToken, code, confirmationUrl, amountKopecks }, 201);
   } catch (error) {
     await database.query(
       "UPDATE consultations SET status = 'cancelled', updated_at = now() WHERE id = $1",
@@ -242,6 +269,46 @@ async function saveQuestion(request) {
   }
 }
 
+async function uploadAttachment(request) {
+  if (!allowRequest("attachment", request, 15, 10 * 60_000)) return json({ error: "too_many_requests" }, 429);
+  const length = Number(request.headers.get("content-length") ?? 0);
+  if (!Number.isFinite(length) || length <= 0 || length > 5_800_000) return json({ error: "file_too_large" }, 413);
+  const form = await request.formData();
+  const consultationId = form.get("consultationId");
+  const browserToken = form.get("browserToken");
+  const file = form.get("file");
+  if (!validUuid(consultationId) || typeof browserToken !== "string" || !(file instanceof File)) return json({ error: "invalid_attachment" }, 400);
+  if (file.size < 1 || file.size > 5 * 1024 * 1024) return json({ error: "file_too_large" }, 413);
+  const bytes = Buffer.from(await file.arrayBuffer());
+  const detected = detectAttachment(bytes, file.name);
+  if (!detected) return json({ error: "unsupported_attachment" }, 415);
+  const database = getDatabasePool();
+  const consultation = await authenticateConsultation(database, consultationId, browserToken);
+  if (!consultation) return json({ error: "not_found" }, 404);
+  if (consultation.status !== "paid") return json({ error: "question_already_saved" }, 409);
+  const client = await database.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT id FROM consultations WHERE id = $1 FOR UPDATE", [consultationId]);
+    const count = await client.query("SELECT count(*)::integer AS count FROM consultation_attachments WHERE consultation_id = $1", [consultationId]);
+    const ordinal = count.rows[0].count + 1;
+    if (ordinal > 5) { await client.query("ROLLBACK"); return json({ error: "too_many_attachments" }, 409); }
+    const attachmentId = randomUUID();
+    const encrypted = encryptBinary(consultationId, attachmentId, bytes);
+    await client.query(
+      `INSERT INTO consultation_attachments
+        (id, consultation_id, ordinal, extension, mime_type, size_bytes, ciphertext, encryption_iv, authentication_tag)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [attachmentId, consultationId, ordinal, detected.extension, detected.mimeType, file.size, encrypted.ciphertext, encrypted.iv, encrypted.authenticationTag],
+    );
+    await client.query("COMMIT");
+    return json({ saved: true, attachment: { id: attachmentId, name: `Документ ${ordinal}.${detected.extension}`, size: file.size } }, 201);
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally { client.release(); }
+}
+
 async function openAnswer(request) {
   if (!allowRequest("safe", request, 10, 15 * 60_000)) return json({ error: "too_many_requests" }, 429);
   const input = await body(request);
@@ -325,6 +392,18 @@ async function consultantList(request) {
        count(*) FILTER (WHERE status = 'archived')::integer AS archive
      FROM consultations`,
   );
+  const consultationIds = result.rows.map((row) => row.id);
+  const attachmentsResult = consultationIds.length === 0 ? { rows: [] } : await database.query(
+    `SELECT id, consultation_id, ordinal, extension, mime_type, size_bytes
+     FROM consultation_attachments WHERE consultation_id = ANY($1::uuid[]) ORDER BY ordinal`,
+    [consultationIds],
+  );
+  const attachmentsByConsultation = new Map();
+  for (const item of attachmentsResult.rows) {
+    const items = attachmentsByConsultation.get(item.consultation_id) ?? [];
+    items.push({ id: item.id, name: `Документ ${item.ordinal}.${item.extension}`, mimeType: item.mime_type, size: item.size_bytes });
+    attachmentsByConsultation.set(item.consultation_id, items);
+  }
   return json({
     counts: countsResult.rows[0],
     consultations: result.rows.map((row) => ({
@@ -339,8 +418,29 @@ async function consultantList(request) {
         encryption_iv: row.answer_encryption_iv,
         authentication_tag: row.answer_authentication_tag,
       }) : null,
+      attachments: attachmentsByConsultation.get(row.id) ?? [],
     })),
   });
+}
+
+async function consultantAttachment(request) {
+  if (!allowRequest("consultant-attachment", request, 40) || !consultantAuthorized(request)) return json({ error: "unauthorized" }, 401);
+  const id = new URL(request.url).searchParams.get("id");
+  if (!validUuid(id)) return json({ error: "invalid_attachment" }, 400);
+  const database = getDatabasePool();
+  const result = await database.query(
+    `SELECT id, consultation_id, ordinal, extension, mime_type, ciphertext, encryption_iv, authentication_tag
+     FROM consultation_attachments WHERE id = $1`, [id],
+  );
+  const item = result.rows[0];
+  if (!item) return json({ error: "not_found" }, 404);
+  const content = decryptBinary(item.consultation_id, item.id, item);
+  return new Response(content, { headers: {
+    "content-type": item.mime_type,
+    "content-disposition": `attachment; filename="document-${item.ordinal}.${item.extension}"`,
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+  }});
 }
 
 async function consultantArchive(request) {
@@ -387,6 +487,7 @@ async function consultantDelete(request) {
       await client.query("ROLLBACK");
       return json({ error: "not_found" }, 404);
     }
+    await client.query("DELETE FROM consultation_attachments WHERE consultation_id = $1", [input.consultationId]);
     await client.query("DELETE FROM consultation_messages WHERE consultation_id = $1", [input.consultationId]);
     await client.query(
       `UPDATE consultations
@@ -488,7 +589,9 @@ async function consultantCalculations(request) {
   const totalResult = await database.query(
     "SELECT COALESCE(SUM(amount_kopecks), 0)::bigint AS total_kopecks FROM consultant_calculations",
   );
+  const priceResult = await database.query("SELECT consultation_price_kopecks FROM site_settings WHERE singleton = true");
   return json({
+    currentPriceKopecks: priceResult.rows[0]?.consultation_price_kopecks ?? 10000,
     totalKopecks: Number(totalResult.rows[0].total_kopecks),
     entries: result.rows.map((row) => ({
       id: row.id,
@@ -505,17 +608,25 @@ async function consultantCalculationCreate(request) {
   }
   const input = await body(request);
   const amountRubles = Number(input.amountRubles);
-  const note = typeof input.note === "string" ? input.note.trim() : "";
-  if (!Number.isInteger(amountRubles) || amountRubles < 1 || amountRubles > 1_000_000 || note.length > 120) {
+  if (!Number.isInteger(amountRubles) || amountRubles < 1 || amountRubles > 1_000_000) {
     return json({ error: "invalid_calculation" }, 400);
   }
   const database = getDatabasePool();
   await database.query(
-    `INSERT INTO consultant_calculations (id, amount_kopecks, note)
-     VALUES ($1, $2, $3)`,
-    [randomUUID(), amountRubles * 100, note],
+    `UPDATE site_settings SET consultation_price_kopecks = $1, updated_at = now() WHERE singleton = true`,
+    [amountRubles * 100],
   );
-  return json({ saved: true }, 201);
+  return json({ saved: true, currentPriceKopecks: amountRubles * 100 });
+}
+
+async function consultantCalculationDelete(request) {
+  if (!allowRequest("consultant-calculations-delete", request, 30) || !consultantAuthorized(request)) return json({ error: "unauthorized" }, 401);
+  const input = await body(request);
+  if (!validUuid(input.id)) return json({ error: "invalid_calculation" }, 400);
+  const database = getDatabasePool();
+  const result = await database.query("DELETE FROM consultant_calculations WHERE id = $1 RETURNING id", [input.id]);
+  if (!result.rows[0]) return json({ error: "not_found" }, 404);
+  return json({ deleted: true });
 }
 
 async function webhook(request) {
@@ -536,17 +647,21 @@ export async function routeApi(request) {
   const url = new URL(request.url);
   const route = `${request.method} ${url.pathname}`;
   try {
+    if (route === "GET /api/consultation-price") return publicPrice();
     if (route === "POST /api/payments/create") return createPayment(request);
     if (route === "POST /api/consultations/status") return consultationStatus(request);
     if (route === "POST /api/consultations/question") return saveQuestion(request);
+    if (route === "POST /api/consultations/attachments") return uploadAttachment(request);
     if (route === "POST /api/consultations/answer") return openAnswer(request);
     if (route === "GET /api/consultant/consultations") return consultantList(request);
+    if (route === "GET /api/consultant/attachments") return consultantAttachment(request);
     if (route === "POST /api/consultant/archive") return consultantArchive(request);
     if (route === "DELETE /api/consultant/consultations") return consultantDelete(request);
     if (route === "POST /api/consultant/ai-draft") return consultantAiDraft(request);
     if (route === "POST /api/consultant/answer") return consultantAnswer(request);
     if (route === "GET /api/consultant/calculations") return consultantCalculations(request);
     if (route === "POST /api/consultant/calculations") return consultantCalculationCreate(request);
+    if (route === "DELETE /api/consultant/calculations") return consultantCalculationDelete(request);
     if (route === "POST /api/yookassa/webhook") return webhook(request);
     return null;
   } catch (error) {
