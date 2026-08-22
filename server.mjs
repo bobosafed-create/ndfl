@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import worker from "./dist/server/index.js";
+import { routeApi } from "./api/router.mjs";
 import {
   checkDatabase,
   classifyDatabaseError,
@@ -74,6 +75,21 @@ const server = createServer(async (request, response) => {
       });
       response.end(JSON.stringify(databaseStatus));
       return;
+    }
+
+    if (requestUrl.pathname.startsWith("/api/")) {
+      const apiRequest = new Request(requestUrl, {
+        method,
+        headers: request.headers,
+        body: method === "GET" || method === "HEAD" ? undefined : request,
+        duplex: method === "GET" || method === "HEAD" ? undefined : "half",
+      });
+      const apiResponse = await routeApi(apiRequest);
+      if (apiResponse) {
+        response.writeHead(apiResponse.status, Object.fromEntries(apiResponse.headers));
+        response.end(Buffer.from(await apiResponse.arrayBuffer()));
+        return;
+      }
     }
 
     if (method === "GET" || method === "HEAD") {

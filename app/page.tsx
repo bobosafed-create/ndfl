@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type Stage = "room" | "payment" | "question" | "waiting" | "answer";
 
@@ -14,31 +14,93 @@ export default function Home() {
   const [answerReady, setAnswerReady] = useState(false);
   const [codeNoticeVisible, setCodeNoticeVisible] = useState(false);
   const [codeNoticeSeconds, setCodeNoticeSeconds] = useState(10);
+  const [consultationId, setConsultationId] = useState("");
+  const [browserToken, setBrowserToken] = useState("");
+  const [answerDueAt, setAnswerDueAt] = useState<string | null>(null);
+  const [answer, setAnswer] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [paymentMessage, setPaymentMessage] = useState("");
 
   const deadline = useMemo(() => {
-    const date = new Date(Date.now() + 60 * 60 * 1000);
-    return date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
-  }, [stage === "waiting"]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!answerDueAt) return "в течение часа";
+    return new Date(answerDueAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  }, [answerDueAt]);
+
+  const refreshStatus = useCallback(async (id: string, token: string) => {
+    const response = await fetch("/api/consultations/status", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ consultationId: id, browserToken: token }),
+    });
+    if (!response.ok) return null;
+    const result = await response.json();
+    setAnswerDueAt(result.answerDueAt ?? null);
+    if (result.status === "paid") {
+      setPaymentMessage("");
+      setStage("question");
+    } else if (result.status === "question_submitted" || result.status === "answered") {
+      setAnswerReady(result.status === "answered");
+      setCodeNoticeVisible(false);
+      setStage("waiting");
+    } else if (result.status === "cancelled") {
+      window.localStorage.removeItem("ndfl-active-consultation");
+      setConsultationId("");
+      setBrowserToken("");
+      setConsultationCode("");
+      setPaymentMessage("Платёж не был завершён. При необходимости начните оплату заново.");
+      setStage("payment");
+    }
+    return result;
+  }, []);
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem("ndfl-active-consultation");
+    if (!saved) return;
+    try {
+      const access = JSON.parse(saved);
+      if (!access.id || !access.token || !/^\d{4}$/.test(access.code)) return;
+      const timer = window.setTimeout(() => {
+        setConsultationId(access.id);
+        setBrowserToken(access.token);
+        setConsultationCode(access.code);
+        const returnedFromPayment = new URLSearchParams(window.location.search).get("payment") === "return";
+        if (returnedFromPayment) {
+          setStage("payment");
+          setPaymentMessage("Проверяем результат оплаты…");
+          window.history.replaceState({}, "", `${window.location.pathname}#room`);
+        }
+        void refreshStatus(access.id, access.token);
+      }, 0);
+      return () => window.clearTimeout(timer);
+    } catch {
+      window.localStorage.removeItem("ndfl-active-consultation");
+    }
+  }, [refreshStatus]);
 
   useEffect(() => {
     if (stage !== "question") return;
-    setTipVisible(true);
     const timer = window.setTimeout(() => setTipVisible(false), 10000);
     return () => window.clearTimeout(timer);
   }, [stage]);
 
-  function generateConsultationCode() {
-    const previousCode = window.sessionStorage.getItem("ndfl-last-consultation-code");
-    let nextCode = "";
-    do {
-      const randomValue = window.crypto.getRandomValues(new Uint32Array(1))[0];
-      nextCode = String(1000 + (randomValue % 9000));
-    } while (nextCode === previousCode);
-
-    window.sessionStorage.setItem("ndfl-last-consultation-code", nextCode);
-    setConsultationCode(nextCode);
-    setSafeCode("");
-    setStage("question");
+  async function startPayment() {
+    if (busy) return;
+    setBusy(true);
+    setPaymentMessage("");
+    try {
+      const response = await fetch("/api/payments/create", { method: "POST" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "payment_failed");
+      window.localStorage.setItem("ndfl-active-consultation", JSON.stringify({
+        id: result.consultationId,
+        token: result.browserToken,
+        code: result.code,
+      }));
+      window.location.assign(result.confirmationUrl);
+    } catch {
+      setPaymentMessage("Не удалось открыть защищённую страницу оплаты. Попробуйте ещё раз немного позже.");
+      setBusy(false);
+    }
   }
 
   function displayCode(value: string) {
@@ -46,10 +108,12 @@ export default function Home() {
   }
 
   useEffect(() => {
-    if (stage !== "waiting") return;
-    const timer = window.setTimeout(() => setAnswerReady(true), 15000);
-    return () => window.clearTimeout(timer);
-  }, [stage]);
+    if (!consultationId || !browserToken || (stage !== "waiting" && stage !== "payment")) return;
+    const timer = window.setInterval(() => {
+      void refreshStatus(consultationId, browserToken);
+    }, stage === "payment" ? 4000 : 30000);
+    return () => window.clearInterval(timer);
+  }, [browserToken, consultationId, refreshStatus, stage]);
 
   useEffect(() => {
     if (stage !== "waiting" || !codeNoticeVisible) return;
@@ -66,31 +130,59 @@ export default function Home() {
     return () => window.clearInterval(timer);
   }, [stage, codeNoticeVisible]);
 
-  function saveQuestion() {
-    if (question.trim().length < 10) return;
-    window.localStorage.setItem(`ndfl-question-${consultationCode}`, question.trim());
-    setCodeNoticeSeconds(10);
-    setCodeNoticeVisible(true);
-    setAnswerReady(false);
-    setStage("waiting");
-    setSafeMessage("");
+  async function saveQuestion() {
+    if (question.trim().length < 10 || busy) return;
+    setBusy(true);
+    try {
+      const response = await fetch("/api/consultations/question", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ consultationId, browserToken, question: question.trim() }),
+      });
+      if (!response.ok) throw new Error("save_failed");
+      const result = await response.json();
+      setAnswerDueAt(result.answerDueAt ?? null);
+      setCodeNoticeSeconds(10);
+      setCodeNoticeVisible(true);
+      setAnswerReady(false);
+      setStage("waiting");
+      setSafeMessage("");
+    } catch {
+      setSafeMessage("Не удалось сохранить вопрос. Проверьте соединение и повторите попытку.");
+    } finally {
+      setBusy(false);
+    }
   }
 
-  function openSafe() {
-    if (safeCode !== consultationCode) {
-      setSafeMessage("Код не подошёл. Посмотрите номер в правом верхнем углу бланка.");
-      return;
+  async function openSafe() {
+    if (!/^\d{4}$/.test(safeCode) || busy) return;
+    setBusy(true);
+    try {
+      const response = await fetch("/api/consultations/answer", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ consultationId, browserToken, code: safeCode }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        const messages: Record<string, string> = {
+          invalid_code: "Код не подошёл. Проверьте четыре цифры.",
+          temporarily_locked: "Слишком много попыток. Повторите через 15 минут.",
+          answer_not_ready: `Ответ будет здесь не позднее ${deadline}.`,
+        };
+        setSafeMessage(messages[result.error] ?? "Не удалось открыть сейф.");
+        return;
+      }
+      setAnswer(result.answer);
+      setSafeMessage("");
+      setStage("answer");
+    } finally {
+      setBusy(false);
     }
-    if (!answerReady) {
-      setSafeMessage(`Документ принят. Ответ будет здесь не позднее ${deadline}.`);
-      return;
-    }
-    setSafeMessage("");
-    setStage("answer");
   }
 
-  function resetDemo() {
-    window.localStorage.removeItem(`ndfl-question-${consultationCode}`);
+  function resetConsultation() {
+    window.localStorage.removeItem("ndfl-active-consultation");
     setStage("room");
     setQuestion("");
     setConsultationCode("");
@@ -99,6 +191,10 @@ export default function Home() {
     setCodeNoticeVisible(false);
     setCodeNoticeSeconds(10);
     setSafeMessage("");
+    setConsultationId("");
+    setBrowserToken("");
+    setAnswer("");
+    setAnswerDueAt(null);
   }
 
   return (
@@ -147,19 +243,19 @@ export default function Home() {
           </div>
           <div className={`safe ${answerReady ? "safe-ready" : ""}`} aria-label="Сейф с ответом"><span className="safe-label">{answerReady ? "ОТВЕТ ГОТОВ" : "ВАШ ОТВЕТ"}</span><div className={`safe-door ${stage === "answer" ? "safe-open" : ""}`}><i className="safe-wheel">✦</i><b>КОД</b></div><div className="safe-legs"><i/><i/></div></div><div className="rug" />
 
-          {stage === "payment" && <div className="modal-backdrop"><section className="payment-card" role="dialog" aria-modal="true" aria-labelledby="payment-title"><button className="close" onClick={() => setStage("room")} aria-label="Закрыть">×</button><span className="payment-icon">₽</span><small>Демонстрационный платёж</small><h3 id="payment-title">Консультация по НДФЛ</h3><div className="price-row"><span>К оплате</span><strong>100 ₽</strong></div><button className="action-button" onClick={generateConsultationCode}>Подтвердить демо-оплату</button><p>После подтверждения будет создан новый персональный код. Банковские данные не запрашиваются, деньги не списываются.</p></section></div>}
+          {stage === "payment" && <div className="modal-backdrop"><section className="payment-card" role="dialog" aria-modal="true" aria-labelledby="payment-title"><button className="close" onClick={() => setStage("room")} aria-label="Закрыть">×</button><span className="payment-icon">₽</span><small>Защищённая оплата через ЮKassa</small><h3 id="payment-title">Консультация по НДФЛ</h3><div className="price-row"><span>К оплате</span><strong>100 ₽</strong></div><button className="action-button" disabled={busy || Boolean(paymentMessage && consultationId)} onClick={startPayment}>{busy ? "Открываем оплату…" : consultationId ? "Проверяем платёж…" : "Оплатить 100 ₽"}</button>{paymentMessage && <p className="payment-error" role="status">{paymentMessage}</p>}<p>Оплата проходит на странице ЮKassa. Сайт не получает и не хранит данные банковской карты.</p></section></div>}
 
-          {stage === "question" && <div className="desk-layer"><article className="question-paper"><header><span>Бланк вопроса</span><strong>Номер консультации (код) — <b>{displayCode(consultationCode)}</b></strong></header>{tipVisible && <div className="timed-tip"><b>Подсказка</b> Опишите кратко свой вопрос. Ответ будет дан в течение часа и появится в сейфе справа. Сохраните код: он создан специально для этой консультации.</div>}<label htmlFor="question">Ваш вопрос консультанту</label><textarea id="question" value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={1200} placeholder="Например: в 2025 году я продал квартиру. Нужно ли подавать декларацию и какие документы понадобятся?" autoFocus/><div className="paper-footer"><span>{question.length} / 1200</span><button className="action-button" disabled={question.trim().length < 10} onClick={saveQuestion}>Сохранить документ <b>✓</b></button></div></article></div>}
+          {stage === "question" && <div className="desk-layer"><article className="question-paper"><header><span>Бланк вопроса</span><strong>Номер консультации (код) — <b>{displayCode(consultationCode)}</b></strong></header>{tipVisible && <div className="timed-tip"><b>Подсказка</b> Опишите кратко свой вопрос. Ответ будет дан в течение часа и появится в сейфе справа. Не указывайте ФИО, адрес, телефон, email и номера документов.</div>}<label htmlFor="question">Ваш вопрос консультанту</label><textarea id="question" value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={1200} placeholder="Например: в 2025 году я продал квартиру. Нужно ли подавать декларацию и какие документы понадобятся?"/><div className="paper-footer"><span>{question.length} / 1200</span><button className="action-button" disabled={question.trim().length < 10 || busy} onClick={saveQuestion}>{busy ? "Сохраняем…" : "Сохранить документ"} <b>✓</b></button></div>{safeMessage && <p className="form-message" role="status">{safeMessage}</p>}</article></div>}
 
           {stage === "waiting" && codeNoticeVisible && <div className="waiting-panel code-notice-panel"><span className="seal">✓</span><h3>Вопрос сохранён</h3><p>Ответ будет подготовлен не позднее <strong>{deadline}</strong>.</p><div className="code-reminder"><span>Ваш персональный код</span><strong>{displayCode(consultationCode)}</strong></div><div className="privacy-countdown"><b>Запомните код!</b><span>Для конфиденциальности окошко закроется через <strong>{codeNoticeSeconds}</strong> сек.</span></div></div>}
 
-          {stage === "waiting" && !codeNoticeVisible && !answerReady && <div className="pending-toast" role="status"><i />Вопрос принят. Ожидаем ответ консультанта.</div>}
+          {stage === "waiting" && !codeNoticeVisible && !answerReady && <div className="pending-toast" role="status"><i />Вопрос принят и зашифрован. Ожидаем ответ консультанта.</div>}
 
-          {stage === "waiting" && !codeNoticeVisible && answerReady && <div className="safe-entry-panel"><span className="safe-entry-kicker">Ответ готов</span><h3>Откройте сейф</h3><p>Введите сохранённый персональный код консультации.</p><label htmlFor="safe-code">Код от сейфа</label><div className="code-entry"><input id="safe-code" inputMode="numeric" autoComplete="one-time-code" maxLength={4} value={safeCode} onChange={(event) => setSafeCode(event.target.value.replace(/\D/g, ""))} placeholder="••••" aria-label="Четырёхзначный код консультации" autoFocus/><button onClick={openSafe}>Открыть</button></div>{safeMessage && <p className="safe-message" role="status">{safeMessage}</p>}</div>}
+          {stage === "waiting" && !codeNoticeVisible && answerReady && <div className="safe-entry-panel"><span className="safe-entry-kicker">Ответ готов</span><h3>Откройте сейф</h3><p>Введите сохранённый персональный код консультации.</p><label htmlFor="safe-code">Код от сейфа</label><div className="code-entry"><input id="safe-code" inputMode="numeric" autoComplete="one-time-code" maxLength={4} value={safeCode} onChange={(event) => setSafeCode(event.target.value.replace(/\D/g, ""))} placeholder="••••" aria-label="Четырёхзначный код консультации"/><button onClick={openSafe}>Открыть</button></div>{safeMessage && <p className="safe-message" role="status">{safeMessage}</p>}</div>}
 
-          {stage === "answer" && <div className="answer-layer"><article className="answer-paper"><header><span>Ответ консультанта</span><strong>Консультация № {displayCode(consultationCode)}</strong></header><div className="consultant-stamp">КОНСУЛЬТАНТ<br/><b>ОТВЕТИЛ</b></div><h3>Ваш вопрос получен</h3><p>Это демонстрационный ответ. В рабочем сервисе здесь будет персональная консультация специалиста по вашему вопросу с понятным перечнем следующих шагов и необходимых документов.</p><div className="answer-note"><b>Важно:</b> перед запуском реального сервиса нужно подключить специалиста, защищённое хранение обращений и платёжного провайдера.</div><button className="action-button" onClick={resetDemo}>Завершить консультацию</button></article></div>}
+          {stage === "answer" && <div className="answer-layer"><article className="answer-paper"><header><span>Ответ консультанта</span><strong>Консультация № {displayCode(consultationCode)}</strong></header><div className="consultant-stamp">КОНСУЛЬТАНТ<br/><b>ОТВЕТИЛ</b></div><h3>Ответ готов</h3><p className="consultation-answer">{answer}</p><div className="answer-note"><b>Важно:</b> ответ относится к описанной ситуации. Если существенные обстоятельства не были указаны, вывод может измениться.</div><button className="action-button" onClick={resetConsultation}>Завершить консультацию</button></article></div>}
         </div>
-        <p className="demo-note">Интерактивный прототип: реального списания денег и юридической консультации не происходит.</p>
+        <p className="demo-note">Вопрос и ответ хранятся в зашифрованном виде. Для открытия сейфа нужны этот браузер и ваш четырёхзначный код.</p>
       </section>
 
       <footer><div className="brand"><span className="brand-mark">₽</span><span>НДФЛ<span className="brand-dot">.просто</span></span></div><p>Сложные налоги — простыми словами.</p><a href="#top">Наверх ↑</a></footer>

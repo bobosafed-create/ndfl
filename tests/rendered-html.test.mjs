@@ -32,16 +32,25 @@ test("server-renders the consultation landing page", async () => {
   assert.match(html, /<title>Проблемы с НДФЛ — вам сюда<\/title>/i);
   assert.match(html, /Нужна консультация/);
   assert.match(html, /Оплатите <strong>100 ₽<\/strong>/);
-  assert.match(html, /Интерактивный прототип/);
+  assert.match(html, /зашифрованном виде/);
   assert.doesNotMatch(html, /codex-preview|Building your site/);
 });
 
-test("keeps consultation codes four digits and avoids real payment claims", async () => {
+test("keeps consultation codes four digits and uses the protected payment flow", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
 
-  assert.match(page, /1000 \+ \(randomValue % 9000\)/);
   assert.match(page, /maxLength=\{4\}/);
-  assert.match(page, /Демонстрационный платёж/);
-  assert.match(page, /деньги не списываются/i);
+  assert.match(page, /\/api\/payments\/create/);
+  assert.match(page, /Защищённая оплата через ЮKassa/);
+  assert.match(page, /ndfl-active-consultation/);
+  assert.doesNotMatch(page, /Демонстрационный платёж/);
   assert.match(page, /окошко закроется через/);
+});
+
+test("renders the consultant cabinet", async () => {
+  const page = await readFile(new URL("../app/consultant/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /Кабинет консультанта/);
+  assert.match(page, /\/api\/consultant\/consultations/);
+  assert.match(page, /Отправить в сейф/);
+  assert.match(page, /type="password"/);
 });
