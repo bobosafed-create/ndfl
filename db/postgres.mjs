@@ -64,12 +64,12 @@ const migrations = [
   },
 ];
 
-function databaseIsConfigured() {
-  return requiredVariables.every((name) => Boolean(process.env[name]));
+function missingDatabaseVariables() {
+  return requiredVariables.filter((name) => !process.env[name]);
 }
 
 function createPool() {
-  if (!databaseIsConfigured()) return null;
+  if (missingDatabaseVariables().length > 0) return null;
 
   const certificatePath = process.env.PGSSLROOTCERT;
   if (!certificatePath) {
@@ -112,7 +112,9 @@ export function getDatabasePool() {
 export async function initializeDatabase() {
   const databasePool = getDatabasePool();
   if (!databasePool) {
-    console.log("PostgreSQL is not configured; database features are disabled");
+    console.log(
+      `PostgreSQL configuration is missing: ${missingDatabaseVariables().join(", ")}`,
+    );
     return { configured: false };
   }
 

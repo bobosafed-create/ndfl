@@ -16,3 +16,8 @@ test("database schema never stores the four-digit code itself", () => {
   assert.doesNotMatch(source, /access_code\s+(?:char|varchar|text|integer)/i);
   assert.match(source, /browser_token_hash char\(64\) NOT NULL/);
 });
+
+test("configuration diagnostics can reveal variable names but never values", () => {
+  assert.match(source, /missingDatabaseVariables\(\)\.join/);
+  assert.doesNotMatch(source, /console\.(?:log|error)\([^\n]*process\.env/);
+});
