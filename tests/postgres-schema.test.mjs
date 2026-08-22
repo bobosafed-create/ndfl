@@ -21,3 +21,10 @@ test("configuration diagnostics can reveal variable names but never values", () 
   assert.match(source, /missingDatabaseVariables\(\)\.join/);
   assert.doesNotMatch(source, /console\.(?:log|error)\([^\n]*process\.env/);
 });
+
+test("connection diagnostics expose only a fixed safe error category", () => {
+  assert.match(source, /return "authentication_failed"/);
+  assert.match(source, /return "tls_verification_failed"/);
+  assert.match(source, /return "unknown_error"/);
+  assert.doesNotMatch(source, /console\.(?:log|error)\([^\n]*error\.message/);
+});

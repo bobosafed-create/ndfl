@@ -163,3 +163,24 @@ export async function checkDatabase() {
     return { status: "unavailable" };
   }
 }
+
+export function classifyDatabaseError(error) {
+  const code = typeof error?.code === "string" ? error.code : "";
+  const message = typeof error?.message === "string" ? error.message.toLowerCase() : "";
+
+  if (code === "28P01") return "authentication_failed";
+  if (code === "3D000") return "database_not_found";
+  if (code === "42501") return "permission_denied";
+  if (code === "ENOTFOUND" || code === "EAI_AGAIN") return "host_not_found";
+  if (code === "ECONNREFUSED") return "connection_refused";
+  if (code === "ETIMEDOUT" || message.includes("timeout")) return "connection_timeout";
+  if (
+    code === "ERR_TLS_CERT_ALTNAME_INVALID" ||
+    code.includes("CERT") ||
+    message.includes("certificate")
+  ) {
+    return "tls_verification_failed";
+  }
+
+  return "unknown_error";
+}

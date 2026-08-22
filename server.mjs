@@ -2,7 +2,11 @@ import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import worker from "./dist/server/index.js";
-import { checkDatabase, initializeDatabase } from "./db/postgres.mjs";
+import {
+  checkDatabase,
+  classifyDatabaseError,
+  initializeDatabase,
+} from "./db/postgres.mjs";
 
 const port = Number(process.env.PORT ?? 3000);
 const clientRoot = join(process.cwd(), "dist", "client");
@@ -120,7 +124,9 @@ try {
   server.listen(port, () => {
     console.log(`NDFL site is running on port ${port}`);
   });
-} catch {
-  console.error("PostgreSQL initialization failed; the server was not started");
+} catch (error) {
+  console.error(
+    `PostgreSQL initialization failed: ${classifyDatabaseError(error)}`,
+  );
   process.exitCode = 1;
 }
