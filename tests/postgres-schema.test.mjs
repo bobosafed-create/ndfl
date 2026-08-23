@@ -60,3 +60,7 @@ test("each consultation stores an immutable tariff snapshot", () => {
   assert.match(source, /tariff_amount_kopecks integer/);
   assert.match(source, /tariff_deadline_minutes integer/);
 });
+
+test("urgent tariff availability is stored in site settings", () => {
+  assert.match(source, /urgent_tariff_available boolean NOT NULL DEFAULT true/);
+});

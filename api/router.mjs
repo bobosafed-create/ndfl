@@ -87,11 +87,14 @@ async function publicTariffs() {
   const database = getDatabasePool();
   if (!database) return json({ error: "service_unavailable" }, 503);
   const result = await database.query(
-    "SELECT consultation_price_kopecks FROM site_settings WHERE singleton = true",
+    "SELECT consultation_price_kopecks, urgent_tariff_available FROM site_settings WHERE singleton = true",
   );
   return json({
     defaultAmountKopecks: result.rows[0]?.consultation_price_kopecks ?? 10000,
-    tariffs: CONSULTATION_TARIFFS,
+    tariffs: CONSULTATION_TARIFFS.map((tariff) => ({
+      ...tariff,
+      available: tariff.code !== "urgent" || result.rows[0]?.urgent_tariff_available !== false,
+    })),
   });
 }
 
@@ -111,12 +114,15 @@ async function createPayment(request) {
   const code = String(randomInt(1000, 10000));
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   const priceResult = await database.query(
-    "SELECT consultation_price_kopecks FROM site_settings WHERE singleton = true",
+    "SELECT consultation_price_kopecks, urgent_tariff_available FROM site_settings WHERE singleton = true",
   );
   const defaultAmountKopecks = priceResult.rows[0]?.consultation_price_kopecks ?? 10000;
   const requestedTariffCode = typeof input.tariffCode === "string" ? input.tariffCode.trim() : "";
   if (requestedTariffCode && !CONSULTATION_TARIFFS.some((item) => item.code === requestedTariffCode)) {
     return json({ error: "invalid_tariff" }, 400);
+  }
+  if (requestedTariffCode === "urgent" && priceResult.rows[0]?.urgent_tariff_available === false) {
+    return json({ error: "urgent_tariff_unavailable" }, 409);
   }
   const tariff = resolveTariff(requestedTariffCode, defaultAmountKopecks);
   const amountKopecks = tariff.amountKopecks;
@@ -625,9 +631,10 @@ async function consultantCalculations(request) {
   const totalResult = await database.query(
     "SELECT COALESCE(SUM(amount_kopecks), 0)::bigint AS total_kopecks FROM consultant_calculations",
   );
-  const priceResult = await database.query("SELECT consultation_price_kopecks FROM site_settings WHERE singleton = true");
+  const priceResult = await database.query("SELECT consultation_price_kopecks, urgent_tariff_available FROM site_settings WHERE singleton = true");
   return json({
     currentPriceKopecks: priceResult.rows[0]?.consultation_price_kopecks ?? 10000,
+    urgentTariffAvailable: priceResult.rows[0]?.urgent_tariff_available !== false,
     totalKopecks: Number(totalResult.rows[0].total_kopecks),
     entries: result.rows.map((row) => ({
       id: row.id,
@@ -636,6 +643,22 @@ async function consultantCalculations(request) {
       createdAt: row.created_at,
     })),
   });
+}
+
+async function consultantSettingsUpdate(request) {
+  if (!allowRequest("consultant-settings-write", request, 20) || !consultantAuthorized(request)) {
+    return json({ error: "unauthorized" }, 401);
+  }
+  const input = await body(request);
+  if (typeof input.urgentTariffAvailable !== "boolean") {
+    return json({ error: "invalid_settings" }, 400);
+  }
+  const database = getDatabasePool();
+  await database.query(
+    `UPDATE site_settings SET urgent_tariff_available = $1, updated_at = now() WHERE singleton = true`,
+    [input.urgentTariffAvailable],
+  );
+  return json({ saved: true, urgentTariffAvailable: input.urgentTariffAvailable });
 }
 
 async function consultantCalculationCreate(request) {
@@ -699,6 +722,7 @@ export async function routeApi(request) {
     if (route === "GET /api/consultant/calculations") return consultantCalculations(request);
     if (route === "POST /api/consultant/calculations") return consultantCalculationCreate(request);
     if (route === "DELETE /api/consultant/calculations") return consultantCalculationDelete(request);
+    if (route === "POST /api/consultant/settings") return consultantSettingsUpdate(request);
     if (route === "POST /api/yookassa/webhook") return webhook(request);
     return null;
   } catch (error) {

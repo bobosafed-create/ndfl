@@ -30,7 +30,7 @@ test("server-renders the consultation landing page", async () => {
 
   const html = await response.text();
   assert.match(html, /<title>Проблемы с НДФЛ — вам сюда<\/title>/i);
-  assert.match(html, /Нужна консультация/);
+  assert.match(html, /Ответ проверяет специалист/);
   assert.match(html, /Проверенный налоговым специалистом письменный ответ в срок выбранного тарифа/);
   assert.match(html, /Выберите подходящий тариф/);
   assert.match(html, /Базовый/);
@@ -40,7 +40,11 @@ test("server-renders the consultation landing page", async () => {
   assert.match(html, /Задаваемые вопросы/);
   assert.doesNotMatch(html, /Входит ли в консультацию дополнительный уточняющий вопрос/);
   assert.doesNotMatch(html, /Что произойдёт, если для точного вывода недостаточно данных/);
-  assert.match(html, /Дежурный/);
+  assert.match(html, /Налоговый консультант/);
+  assert.match(html, /Александр Владимирович/);
+  assert.match(html, /более 20 лет/i);
+  assert.match(html, /СРО аудиторов ААС/);
+  assert.match(html, /понедельник–пятница/);
   assert.match(html, /зашифрованном виде/);
   assert.doesNotMatch(html, /codex-preview|Building your site/);
 });
@@ -61,7 +65,8 @@ test("keeps consultation codes four digits and uses the protected payment flow",
   assert.doesNotMatch(page, /type="file"/);
   assert.doesNotMatch(page, /\/api\/consultations\/attachments/);
   assert.match(page, /не указываю в вопросе персональные данные/);
-  assert.match(page, /consultant-male-v3\.png/);
+  assert.match(page, /specialist-photo\.jpg/);
+  assert.doesNotMatch(page, /consultant-male-v3\.png/);
   assert.doesNotMatch(page, /Ваш консультант<\/span><strong>Анна/);
   assert.match(page, /className="mobile-question-cta"/);
   assert.match(page, /mobile-question-cta" type="button" onClick=\{\(\) => setStage\("payment"\)\}/);
@@ -112,4 +117,6 @@ test("renders the consultant cabinet", async () => {
   assert.match(page, /consultant\/attachments/);
   assert.match(page, /цена по умолчанию/i);
   assert.match(page, /Тариф:/);
+  assert.match(page, /Срочный тариф/);
+  assert.match(page, /\/api\/consultant\/settings/);
 });

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 type Stage = "room" | "payment" | "question" | "waiting" | "answer";
-type Tariff = { code: string; name: string; description: string; amountKopecks: number; deadlineMinutes: number; recommended?: boolean };
+type Tariff = { code: string; name: string; description: string; amountKopecks: number; deadlineMinutes: number; recommended?: boolean; available?: boolean };
 
 const fallbackTariffs: Tariff[] = [
   { code: "basic", name: "Базовый", description: "Один простой вопрос без расчётов, краткий письменный ответ", amountKopecks: 20000, deadlineMinutes: 240 },
@@ -113,9 +113,12 @@ export default function Home() {
   useEffect(() => {
     fetch("/api/tariffs").then((response) => response.ok ? response.json() : null).then((result) => {
       if (Number.isInteger(result?.defaultAmountKopecks)) setDefaultPriceKopecks(result.defaultAmountKopecks);
-      if (Array.isArray(result?.tariffs) && result.tariffs.length > 0) setTariffs(result.tariffs);
+      if (Array.isArray(result?.tariffs) && result.tariffs.length > 0) {
+        setTariffs(result.tariffs);
+        if (result.tariffs.some((tariff: Tariff) => tariff.code === selectedTariffCode && tariff.available === false)) setSelectedTariffCode("");
+      }
     }).catch(() => {});
-  }, []);
+  }, [selectedTariffCode]);
 
   useEffect(() => {
     const saved = window.localStorage.getItem("ndfl-active-consultation");
@@ -165,8 +168,10 @@ export default function Home() {
         code: result.code,
       }));
       window.location.assign(result.confirmationUrl);
-    } catch {
-      setPaymentMessage("Не удалось открыть защищённую страницу оплаты. Попробуйте ещё раз немного позже.");
+    } catch (error) {
+      setPaymentMessage(error instanceof Error && error.message === "urgent_tariff_unavailable"
+        ? "Срочный тариф сейчас временно недоступен. Выберите другой тариф."
+        : "Не удалось открыть защищённую страницу оплаты. Попробуйте ещё раз немного позже.");
       setBusy(false);
     }
   }
@@ -296,11 +301,11 @@ export default function Home() {
         <div className="consultant-portrait">
           <div className="portrait-sun" aria-hidden="true">✦</div>
           <div className="portrait-frame">
-            <img src="/consultant-male-v3.png" alt="Дежурный консультант по НДФЛ в квадратных очках указывает вниз" />
+            <img src="/specialist-photo.jpg" alt="Налоговый консультант Александр Владимирович" />
           </div>
-          <div className="consultant-label"><span>Дежурный</span><strong>Консультант</strong><small><i /> Сейчас на связи</small></div>
+          <div className="consultant-label"><span>Налоговый консультант</span><strong>Александр Владимирович</strong><small><i /> Самозанятый</small></div>
         </div>
-        <div className="guide-copy"><span className="mini-label">Ваш проводник</span><h2>Нужна консультация?<br/><span>Пройдите сюда.</span></h2><p>Три шага: войдите, оставьте вопрос, заберите ответ по своему коду.</p></div>
+        <div className="guide-copy consultant-profile"><span className="mini-label">Ответ проверяет специалист</span><h2>Александр<br/><span>Владимирович</span></h2><p className="profile-lead">Финансовый и налоговый аналитик с опытом более 20 лет. Высшее экономическое образование.</p><dl className="consultant-facts"><div><dt>Статус</dt><dd>Самозанятый · ИНН 231500470459</dd></div><div><dt>Профессиональный опыт</dt><dd>Аудитор, финансовый аналитик, налоговый аналитик</dd></div><div><dt>Специализация</dt><dd>Финансовый анализ, внутренний и внешний аудит, налоговое планирование, управленческий учёт, финансовое консультирование</dd></div><div><dt>Профессиональное членство</dt><dd>СРО аудиторов ААС</dd></div></dl><p className="consultant-sectors"><b>Отраслевой опыт:</b> цементная отрасль, портовые структуры, агентирование и перевалка грузов, железная дорога, оптовая торговля, гостиничный и строительный бизнес.</p></div>
       </section>
 
       <section className="qa-section" aria-labelledby="qa-heading">
@@ -324,12 +329,12 @@ export default function Home() {
       </section>
 
       <section className="pricing-section" aria-labelledby="pricing-heading">
-        <div className="pricing-heading"><span>Стоимость услуг</span><h2 id="pricing-heading">Выберите подходящий тариф</h2><p>Выбор действует только для этой консультации. Если тариф не выбран, применяется текущая цена консультанта — <strong>{(defaultPriceKopecks / 100).toLocaleString("ru-RU")} ₽</strong>.</p></div>
+        <div className="pricing-heading"><span>Стоимость услуг</span><h2 id="pricing-heading">Выберите подходящий тариф</h2><p>Выбор действует только для этой консультации. Если тариф не выбран, применяется текущая цена консультанта — <strong>{(defaultPriceKopecks / 100).toLocaleString("ru-RU")} ₽</strong>.</p><div className="service-hours"><b>Приём вопросов:</b> понедельник–пятница, с 09:00 до 13:00 по московскому времени.<span>Срочный тариф в отдельные часы может быть недоступен.</span></div></div>
         <div className="tariff-grid" role="radiogroup" aria-label="Тариф консультации">
-          {tariffs.map((tariff) => <label className={`tariff-card ${selectedTariffCode === tariff.code ? "selected" : ""}`} key={tariff.code}>
-            <input type="radio" name="consultation-tariff" value={tariff.code} checked={selectedTariffCode === tariff.code} onChange={() => setSelectedTariffCode(tariff.code)} />
+          {tariffs.map((tariff) => <label className={`tariff-card ${selectedTariffCode === tariff.code ? "selected" : ""} ${tariff.available === false ? "unavailable" : ""}`} key={tariff.code}>
+            <input type="radio" name="consultation-tariff" value={tariff.code} checked={selectedTariffCode === tariff.code} disabled={tariff.available === false} onChange={() => setSelectedTariffCode(tariff.code)} />
             <span className="tariff-radio" aria-hidden="true" />
-            {tariff.recommended && <b className="tariff-badge">Рекомендуем</b>}
+            {tariff.available === false ? <b className="tariff-badge unavailable-badge">Временно недоступен</b> : tariff.recommended && <b className="tariff-badge">Рекомендуем</b>}
             <strong>{tariff.name}</strong><em>{(tariff.amountKopecks / 100).toLocaleString("ru-RU")} ₽</em><small>{tariffDeadline(tariff.deadlineMinutes)}</small><p>{tariff.description}</p>
           </label>)}
         </div>

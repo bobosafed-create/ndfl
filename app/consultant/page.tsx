@@ -32,6 +32,7 @@ export default function ConsultantCabinet() {
   const [calculationValue, setCalculationValue] = useState("100");
   const [calculationEntries, setCalculationEntries] = useState<CalculationEntry[]>([]);
   const [calculationTotal, setCalculationTotal] = useState(0);
+  const [urgentTariffAvailable, setUrgentTariffAvailable] = useState(true);
   const [draftingId, setDraftingId] = useState<string | null>(null);
 
   async function load(key: string, targetView: CabinetView = view) {
@@ -57,6 +58,7 @@ export default function ConsultantCabinet() {
       setCalculationEntries(calculationsResult.entries);
       setCalculationTotal(calculationsResult.totalKopecks);
       setCalculationValue(String((calculationsResult.currentPriceKopecks ?? 10000) / 100));
+      setUrgentTariffAvailable(calculationsResult.urgentTariffAvailable !== false);
       setAuthenticated(true);
       window.sessionStorage.setItem("ndfl-consultant-key", key);
       const withoutDraft = items.find((item) => item.status === "question_submitted" && !item.aiDraft);
@@ -198,6 +200,23 @@ export default function ConsultantCabinet() {
     finally { setLoading(false); }
   }
 
+  async function toggleUrgentTariff() {
+    if (loading) return;
+    const nextValue = !urgentTariffAvailable;
+    setLoading(true); setMessage("");
+    try {
+      const response = await fetch("/api/consultant/settings", {
+        method: "POST",
+        headers: { authorization: `Bearer ${accessKey}`, "content-type": "application/json" },
+        body: JSON.stringify({ urgentTariffAvailable: nextValue }),
+      });
+      if (!response.ok) throw new Error("save_failed");
+      setUrgentTariffAvailable(nextValue);
+      setMessage(nextValue ? "Срочный тариф снова доступен посетителям." : "Срочный тариф временно отключён.");
+    } catch { setMessage("Не удалось изменить доступность срочного тарифа."); }
+    finally { setLoading(false); }
+  }
+
   async function deleteCalculation(id: string) {
     if (!window.confirm("Удалить эту старую тестовую сумму?")) return;
     setLoading(true); setMessage("");
@@ -278,6 +297,7 @@ export default function ConsultantCabinet() {
               <div className="calculator-keys">{["7", "8", "9", "4", "5", "6", "1", "2", "3", "C", "0", "⌫"].map((key) => <button className={key === "C" ? "calculator-clear" : ""} key={key} type="button" onClick={() => pressCalculator(key)}>{key}</button>)}</div>
               <button className="calculator-save" type="button" disabled={Number(calculationValue) < 1 || loading} onClick={() => void saveCalculation()}>Установить цену на сайте</button>
               <p className="calculator-disclaimer">Это цена по умолчанию. Она применяется, если посетитель не выбрал тариф. Выбор тарифной карточки действует только для его консультации; уже созданные платежи не изменяются.</p>
+              <div className={`urgent-control ${urgentTariffAvailable ? "available" : "unavailable"}`}><div><b>Срочный тариф</b><span>{urgentTariffAvailable ? "Доступен посетителям" : "Временно недоступен"}</span></div><button type="button" role="switch" aria-checked={urgentTariffAvailable} disabled={loading} onClick={() => void toggleUrgentTariff()}><i /></button></div>
             </div>
 
             <div className="calculation-ledger">

@@ -147,6 +147,13 @@ const migrations = [
         CHECK (tariff_deadline_minutes IS NULL OR tariff_deadline_minutes BETWEEN 15 AND 10080)`,
     ],
   },
+  {
+    version: 7,
+    statements: [
+      `ALTER TABLE site_settings
+        ADD COLUMN IF NOT EXISTS urgent_tariff_available boolean NOT NULL DEFAULT true`,
+    ],
+  },
 ];
 
 function missingDatabaseVariables() {

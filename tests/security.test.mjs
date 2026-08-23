@@ -60,6 +60,16 @@ test("tariff choice is validated and bound to the server-side payment amount", a
   assert.match(router, /invalid_tariff/);
   assert.match(router, /remoteAmountKopecks !== localPayment\.amount_kopecks/);
   assert.match(router, /metadata\?\.tariff_code !== localPayment\.tariff_code/);
+  assert.match(router, /urgent_tariff_unavailable/);
+  assert.match(router, /requestedTariffCode === "urgent"/);
+});
+
+test("urgent tariff availability is controlled only from the authenticated cabinet", async () => {
+  const router = await readFile(new URL("../api/router.mjs", import.meta.url), "utf8");
+  assert.match(router, /consultantSettingsUpdate/);
+  assert.match(router, /POST \/api\/consultant\/settings/);
+  assert.match(router, /consultantAuthorized\(request\)/);
+  assert.match(router, /typeof input\.urgentTariffAvailable !== "boolean"/);
 });
 
 test("consultant calculations require the consultant key", async () => {
