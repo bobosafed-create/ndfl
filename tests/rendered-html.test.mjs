@@ -38,8 +38,8 @@ test("server-renders the consultation landing page", async () => {
   assert.match(html, /Срочный/);
   assert.match(html, /Сложный случай/);
   assert.match(html, /Задаваемые вопросы/);
-  assert.match(html, /Входит ли в консультацию дополнительный уточняющий вопрос/);
-  assert.match(html, /Дополнительный или уточняющий вопрос оформляется как новая консультация/);
+  assert.doesNotMatch(html, /Входит ли в консультацию дополнительный уточняющий вопрос/);
+  assert.doesNotMatch(html, /Что произойдёт, если для точного вывода недостаточно данных/);
   assert.match(html, /Дежурный/);
   assert.match(html, /зашифрованном виде/);
   assert.doesNotMatch(html, /codex-preview|Building your site/);
