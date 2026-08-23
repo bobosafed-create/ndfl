@@ -123,5 +123,7 @@ test("renders the consultant cabinet", async () => {
   assert.match(page, /Включить звук/);
   assert.match(page, /Поступил новый вопрос/);
   assert.match(page, /new Notification/);
+  assert.match(page, /Оповещения по НДФЛ включены/);
+  assert.match(page, /пробное системное уведомление Windows/);
   assert.match(page, /AudioContext/);
 });

@@ -177,8 +177,16 @@ export default function ConsultantCabinet() {
       if (permission === "default") permission = await Notification.requestPermission();
     }
     setAlertsEnabled(true);
+    if (permission === "granted") {
+      const notification = new Notification("Оповещения по НДФЛ включены", {
+        body: "Проверка успешна. Здесь появится напоминание о новом вопросе.",
+        icon: "/favicon.svg",
+        tag: "ndfl-notification-test",
+      });
+      notification.onclick = () => { window.focus(); notification.close(); };
+    }
     setMessage(permission === "granted"
-      ? "Оповещения включены: при новом вопросе прозвучит сигнал и появится системное уведомление."
+      ? "Оповещения включены. Сейчас должно появиться пробное системное уведомление Windows."
       : "Звуковой сигнал и окно в кабинете включены. Системные уведомления браузера не разрешены.");
   }
 
