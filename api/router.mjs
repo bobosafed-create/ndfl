@@ -16,6 +16,7 @@ import {
   createConsultationDraft,
   aiConfigured,
 } from "../lib/ai.mjs";
+import { CONSULTATION_TARIFFS, resolveTariff } from "../lib/tariffs.mjs";
 
 const rateLimits = new Map();
 const ANSWER_NOTICE = "Пометка консультанта: Ответ составлен по предоставленным данным. Если у вас имеются дополнительные обезличенные сведения, способные повлиять на вывод, оформите новый вопрос в том же порядке, что и первоначальный.";
@@ -57,6 +58,7 @@ async function body(request) {
   if (length > 16_384) throw new Error("body_too_large");
   const text = await request.text();
   if (Buffer.byteLength(text, "utf8") > 16_384) throw new Error("body_too_large");
+  if (!text.trim()) return {};
   return JSON.parse(text);
 }
 
@@ -81,6 +83,18 @@ async function publicPrice() {
   return json({ amountKopecks: result.rows[0]?.consultation_price_kopecks ?? 10000 });
 }
 
+async function publicTariffs() {
+  const database = getDatabasePool();
+  if (!database) return json({ error: "service_unavailable" }, 503);
+  const result = await database.query(
+    "SELECT consultation_price_kopecks FROM site_settings WHERE singleton = true",
+  );
+  return json({
+    defaultAmountKopecks: result.rows[0]?.consultation_price_kopecks ?? 10000,
+    tariffs: CONSULTATION_TARIFFS,
+  });
+}
+
 async function createPayment(request) {
   if (!allowRequest("payment", request, 5, 10 * 60_000)) {
     return json({ error: "too_many_requests" }, 429);
@@ -88,6 +102,7 @@ async function createPayment(request) {
 
   const database = getDatabasePool();
   if (!database) return json({ error: "service_unavailable" }, 503);
+  const input = await body(request);
 
   const consultationId = randomUUID();
   const paymentId = randomUUID();
@@ -98,20 +113,30 @@ async function createPayment(request) {
   const priceResult = await database.query(
     "SELECT consultation_price_kopecks FROM site_settings WHERE singleton = true",
   );
-  const amountKopecks = priceResult.rows[0]?.consultation_price_kopecks ?? 10000;
+  const defaultAmountKopecks = priceResult.rows[0]?.consultation_price_kopecks ?? 10000;
+  const requestedTariffCode = typeof input.tariffCode === "string" ? input.tariffCode.trim() : "";
+  if (requestedTariffCode && !CONSULTATION_TARIFFS.some((item) => item.code === requestedTariffCode)) {
+    return json({ error: "invalid_tariff" }, 400);
+  }
+  const tariff = resolveTariff(requestedTariffCode, defaultAmountKopecks);
+  const amountKopecks = tariff.amountKopecks;
 
   const client = await database.connect();
   try {
     await client.query("BEGIN");
     await client.query(
       `INSERT INTO consultations
-        (id, code_hash, browser_token_hash, expires_at)
-       VALUES ($1, $2, $3, $4)`,
+        (id, code_hash, browser_token_hash, expires_at, tariff_code, tariff_name, tariff_amount_kopecks, tariff_deadline_minutes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         consultationId,
         codeHash(consultationId, code),
         browserTokenHash(consultationId, browserToken),
         expiresAt,
+        tariff.code,
+        tariff.name,
+        tariff.amountKopecks,
+        tariff.deadlineMinutes,
       ],
     );
     await client.query(
@@ -129,7 +154,7 @@ async function createPayment(request) {
   }
 
   try {
-    const payment = await createYooKassaPayment({ consultationId, idempotencyKey, amountKopecks });
+    const payment = await createYooKassaPayment({ consultationId, idempotencyKey, amountKopecks, tariff });
     const confirmationUrl = payment?.confirmation?.confirmation_url;
     if (!payment?.id || !confirmationUrl || !confirmationUrl.startsWith("https://")) {
       throw new Error("invalid_yookassa_response");
@@ -139,7 +164,7 @@ async function createPayment(request) {
        WHERE id = $3`,
       [payment.id, payment.status ?? "pending", paymentId],
     );
-    return json({ consultationId, browserToken, code, confirmationUrl, amountKopecks }, 201);
+    return json({ consultationId, browserToken, code, confirmationUrl, amountKopecks, tariff }, 201);
   } catch (error) {
     await database.query(
       "UPDATE consultations SET status = 'cancelled', updated_at = now() WHERE id = $1",
@@ -164,8 +189,9 @@ async function authenticateConsultation(database, consultationId, browserToken) 
 
 async function synchronizePayment(database, consultationId) {
   const result = await database.query(
-    `SELECT provider_payment_id, status FROM payments
-     WHERE consultation_id = $1 ORDER BY created_at DESC LIMIT 1`,
+    `SELECT p.provider_payment_id, p.status, p.amount_kopecks, c.tariff_code
+     FROM payments p JOIN consultations c ON c.id = p.consultation_id
+     WHERE p.consultation_id = $1 ORDER BY p.created_at DESC LIMIT 1`,
     [consultationId],
   );
   const localPayment = result.rows[0];
@@ -174,6 +200,9 @@ async function synchronizePayment(database, consultationId) {
 
   const remotePayment = await getYooKassaPayment(localPayment.provider_payment_id);
   if (remotePayment?.metadata?.consultation_id !== consultationId) return null;
+  if (localPayment.tariff_code && remotePayment?.metadata?.tariff_code !== localPayment.tariff_code) return null;
+  const remoteAmountKopecks = Math.round(Number(remotePayment?.amount?.value) * 100);
+  if (!Number.isInteger(remoteAmountKopecks) || remoteAmountKopecks !== localPayment.amount_kopecks) return null;
   const remoteStatus = remotePayment.status;
   if (!["pending", "waiting_for_capture", "succeeded", "cancelled"].includes(remoteStatus)) {
     return null;
@@ -187,7 +216,6 @@ async function synchronizePayment(database, consultationId) {
     await database.query(
       `UPDATE consultations
        SET status = CASE WHEN status = 'awaiting_payment' THEN 'paid' ELSE status END,
-           answer_due_at = COALESCE(answer_due_at, now() + interval '4 hours'),
            updated_at = now()
        WHERE id = $1`,
       [consultationId],
@@ -220,6 +248,12 @@ async function consultationStatus(request) {
     status: fresh.status,
     answerDueAt: fresh.answer_due_at,
     answerReady: fresh.status === "answered",
+    tariff: fresh.tariff_code ? {
+      code: fresh.tariff_code,
+      name: fresh.tariff_name,
+      amountKopecks: fresh.tariff_amount_kopecks,
+      deadlineMinutes: fresh.tariff_deadline_minutes,
+    } : null,
   });
 }
 
@@ -248,12 +282,16 @@ async function saveQuestion(request) {
        VALUES ($1, $2, 'visitor', $3, $4, $5)`,
       [randomUUID(), consultation.id, encrypted.ciphertext, encrypted.iv, encrypted.authenticationTag],
     );
-    await client.query(
-      "UPDATE consultations SET status = 'question_submitted', updated_at = now() WHERE id = $1",
+    const deadlineResult = await client.query(
+      `UPDATE consultations
+       SET status = 'question_submitted',
+           answer_due_at = COALESCE(answer_due_at, now() + (COALESCE(tariff_deadline_minutes, 240) * interval '1 minute')),
+           updated_at = now()
+       WHERE id = $1 RETURNING answer_due_at`,
       [consultation.id],
     );
     await client.query("COMMIT");
-    return json({ saved: true, answerDueAt: consultation.answer_due_at });
+    return json({ saved: true, answerDueAt: deadlineResult.rows[0]?.answer_due_at ?? null });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     throw error;
@@ -317,6 +355,7 @@ async function consultantList(request) {
   const database = getDatabasePool();
   const result = await database.query(
     `SELECT c.id, c.status, c.answer_due_at, c.created_at, c.archived_at,
+            c.tariff_code, c.tariff_name, c.tariff_amount_kopecks, c.tariff_deadline_minutes,
             visitor.ciphertext, visitor.encryption_iv, visitor.authentication_tag,
             answer.ciphertext AS answer_ciphertext,
             answer.encryption_iv AS answer_encryption_iv,
@@ -376,6 +415,12 @@ async function consultantList(request) {
       id: row.id,
       status: row.status,
       answerDueAt: row.answer_due_at,
+      tariff: row.tariff_code ? {
+        code: row.tariff_code,
+        name: row.tariff_name,
+        amountKopecks: row.tariff_amount_kopecks,
+        deadlineMinutes: row.tariff_deadline_minutes,
+      } : null,
       createdAt: row.created_at,
       archivedAt: row.archived_at,
       question: decryptMessage(row.id, "visitor", row),
@@ -639,6 +684,7 @@ export async function routeApi(request) {
   const route = `${request.method} ${url.pathname}`;
   try {
     if (route === "GET /api/consultation-price") return publicPrice();
+    if (route === "GET /api/tariffs") return publicTariffs();
     if (route === "POST /api/payments/create") return createPayment(request);
     if (route === "POST /api/consultations/status") return consultationStatus(request);
     if (route === "POST /api/consultations/question") return saveQuestion(request);

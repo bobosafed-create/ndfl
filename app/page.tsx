@@ -3,6 +3,21 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 type Stage = "room" | "payment" | "question" | "waiting" | "answer";
+type Tariff = { code: string; name: string; description: string; amountKopecks: number; deadlineMinutes: number; recommended?: boolean };
+
+const fallbackTariffs: Tariff[] = [
+  { code: "basic", name: "Базовый", description: "Один простой вопрос без расчётов, краткий письменный ответ", amountKopecks: 20000, deadlineMinutes: 240 },
+  { code: "standard", name: "Стандартный", description: "Подробный ответ с пояснением и рекомендуемыми действиями", amountKopecks: 40000, deadlineMinutes: 240, recommended: true },
+  { code: "urgent", name: "Срочный", description: "Стандартный письменный ответ с приоритетной обработкой", amountKopecks: 75000, deadlineMinutes: 60 },
+  { code: "complex", name: "Сложный случай", description: "Разбор ситуации с налоговыми расчётами и пояснениями", amountKopecks: 99000, deadlineMinutes: 480 },
+];
+
+function tariffDeadline(minutes: number) {
+  if (minutes === 60) return "Ответ в течение 1 часа";
+  if (minutes === 240) return "Ответ в течение 4 часов";
+  if (minutes === 480) return "Ответ в течение 8 часов";
+  return `Ответ в течение ${minutes} минут`;
+}
 
 function paginateAnswer(text: string, pageSize = 1050) {
   const paragraphs = text.replace(/\r\n/g, "\n").split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
@@ -51,14 +66,19 @@ export default function Home() {
   const [answerPage, setAnswerPage] = useState(0);
   const [busy, setBusy] = useState(false);
   const [paymentMessage, setPaymentMessage] = useState("");
-  const [priceKopecks, setPriceKopecks] = useState(10000);
+  const [defaultPriceKopecks, setDefaultPriceKopecks] = useState(10000);
+  const [tariffs, setTariffs] = useState<Tariff[]>(fallbackTariffs);
+  const [selectedTariffCode, setSelectedTariffCode] = useState("");
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
 
+  const selectedTariff = useMemo(() => tariffs.find((tariff) => tariff.code === selectedTariffCode) ?? null, [selectedTariffCode, tariffs]);
+  const priceKopecks = selectedTariff?.amountKopecks ?? defaultPriceKopecks;
   const priceLabel = useMemo(() => `${(priceKopecks / 100).toLocaleString("ru-RU")} ₽`, [priceKopecks]);
+  const selectedDeadline = selectedTariff ? tariffDeadline(selectedTariff.deadlineMinutes) : "Срок будет указан после оплаты";
   const answerPages = useMemo(() => paginateAnswer(answer), [answer]);
 
   const deadline = useMemo(() => {
-    if (!answerDueAt) return "в течение 4 часов";
+    if (!answerDueAt) return "в срок выбранного тарифа";
     return new Date(answerDueAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
   }, [answerDueAt]);
 
@@ -73,6 +93,7 @@ export default function Home() {
     setAnswerDueAt(result.answerDueAt ?? null);
     if (result.status === "paid") {
       setPaymentMessage("");
+      setSelectedTariffCode("");
       setStage("question");
     } else if (result.status === "question_submitted" || result.status === "answered") {
       setAnswerReady(result.status === "answered");
@@ -90,8 +111,9 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    fetch("/api/consultation-price").then((response) => response.ok ? response.json() : null).then((result) => {
-      if (Number.isInteger(result?.amountKopecks)) setPriceKopecks(result.amountKopecks);
+    fetch("/api/tariffs").then((response) => response.ok ? response.json() : null).then((result) => {
+      if (Number.isInteger(result?.defaultAmountKopecks)) setDefaultPriceKopecks(result.defaultAmountKopecks);
+      if (Array.isArray(result?.tariffs) && result.tariffs.length > 0) setTariffs(result.tariffs);
     }).catch(() => {});
   }, []);
 
@@ -130,7 +152,11 @@ export default function Home() {
     setBusy(true);
     setPaymentMessage("");
     try {
-      const response = await fetch("/api/payments/create", { method: "POST" });
+      const response = await fetch("/api/payments/create", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ tariffCode: selectedTariffCode || null }),
+      });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "payment_failed");
       window.localStorage.setItem("ndfl-active-consultation", JSON.stringify({
@@ -239,6 +265,7 @@ export default function Home() {
     setAnswer("");
     setAnswerPage(0);
     setAnswerDueAt(null);
+    setSelectedTariffCode("");
   }
 
   return (
@@ -304,6 +331,19 @@ export default function Home() {
         <div className="dotted-arrow">↓</div>
       </section>
 
+      <section className="pricing-section" aria-labelledby="pricing-heading">
+        <div className="pricing-heading"><span>Стоимость услуг</span><h2 id="pricing-heading">Выберите подходящий тариф</h2><p>Выбор действует только для этой консультации. Если тариф не выбран, применяется текущая цена консультанта — <strong>{(defaultPriceKopecks / 100).toLocaleString("ru-RU")} ₽</strong>.</p></div>
+        <div className="tariff-grid" role="radiogroup" aria-label="Тариф консультации">
+          {tariffs.map((tariff) => <label className={`tariff-card ${selectedTariffCode === tariff.code ? "selected" : ""}`} key={tariff.code}>
+            <input type="radio" name="consultation-tariff" value={tariff.code} checked={selectedTariffCode === tariff.code} onChange={() => setSelectedTariffCode(tariff.code)} />
+            <span className="tariff-radio" aria-hidden="true" />
+            {tariff.recommended && <b className="tariff-badge">Рекомендуем</b>}
+            <strong>{tariff.name}</strong><em>{(tariff.amountKopecks / 100).toLocaleString("ru-RU")} ₽</em><small>{tariffDeadline(tariff.deadlineMinutes)}</small><p>{tariff.description}</p>
+          </label>)}
+        </div>
+        <div className="tariff-summary" aria-live="polite"><div><span>{selectedTariff ? `Выбран тариф «${selectedTariff.name}»` : "Тариф пока не выбран"}</span><strong>К оплате: {priceLabel}</strong><small>{selectedTariff ? selectedDeadline : "Действует цена, установленная консультантом"}</small></div><div>{selectedTariff && <button className="tariff-reset" type="button" onClick={() => setSelectedTariffCode("")}>Сбросить выбор</button>}<a href="#room">Перейти к консультации →</a></div></div>
+      </section>
+
       <section id="room" className="room-section">
         <div className="section-heading"><span>Комната консультации № 1</span><h2>Один вопрос — один понятный ответ</h2></div>
         <div className={`room stage-${stage}`}>
@@ -312,11 +352,11 @@ export default function Home() {
             <div className={`door ${stage !== "room" && stage !== "payment" ? "door-active" : ""}`}><div className="door-sign">КОНСУЛЬТАНТ<small>на связи</small></div><div className="door-knob" /></div>
             {stage === "room" && <><button className="pay-button" onClick={() => setStage("payment")}><span>ВХОД</span><strong>{priceLabel}</strong></button><p>Один письменный вопрос без регистрации</p></>}
           </div>
-          <div className={`safe ${answerReady ? "safe-ready" : ""}`} aria-label="Защищённый сейф с ответом"><span className="safe-label">{answerReady ? "ОТВЕТ ГОТОВ" : "Проверенный налоговым специалистом письменный ответ в течение 4 часов"}</span><div className={`safe-door ${stage === "answer" ? "safe-open" : ""}`}><i className="safe-wheel" aria-hidden="true"><span /></i><b>ПЕРСОНАЛЬНЫЙ КОД</b></div><div className="safe-legs"><i/><i/></div></div><div className="rug" />
+          <div className={`safe ${answerReady ? "safe-ready" : ""}`} aria-label="Защищённый сейф с ответом"><span className="safe-label">{answerReady ? "ОТВЕТ ГОТОВ" : "Проверенный налоговым специалистом письменный ответ в срок выбранного тарифа"}</span><div className={`safe-door ${stage === "answer" ? "safe-open" : ""}`}><i className="safe-wheel" aria-hidden="true"><span /></i><b>ПЕРСОНАЛЬНЫЙ КОД</b></div><div className="safe-legs"><i/><i/></div></div><div className="rug" />
 
-          {stage === "payment" && <div className="modal-backdrop"><section className="payment-card" role="dialog" aria-modal="true" aria-labelledby="payment-title"><button className="close" onClick={() => setStage("room")} aria-label="Закрыть">×</button><span className="payment-icon">₽</span><small>Защищённая оплата через ЮKassa</small><h3 id="payment-title">Консультация по НДФЛ</h3><div className="price-row"><span>К оплате</span><strong>{priceLabel}</strong></div><button className="action-button" disabled={busy || Boolean(paymentMessage && consultationId)} onClick={startPayment}>{busy ? "Открываем оплату…" : consultationId ? "Проверяем платёж…" : `Оплатить ${priceLabel}`}</button>{paymentMessage && <p className="payment-error" role="status">{paymentMessage}</p>}<p>Оплата проходит на странице ЮKassa. Сайт не получает и не хранит данные банковской карты.</p></section></div>}
+          {stage === "payment" && <div className="modal-backdrop"><section className="payment-card" role="dialog" aria-modal="true" aria-labelledby="payment-title"><button className="close" onClick={() => setStage("room")} aria-label="Закрыть">×</button><span className="payment-icon">₽</span><small>Защищённая оплата через ЮKassa</small><h3 id="payment-title">{selectedTariff ? `Тариф «${selectedTariff.name}»` : "Консультация по НДФЛ"}</h3><p className="payment-deadline">{selectedDeadline}</p><div className="price-row"><span>К оплате</span><strong>{priceLabel}</strong></div><button className="action-button" disabled={busy || Boolean(paymentMessage && consultationId)} onClick={startPayment}>{busy ? "Открываем оплату…" : consultationId ? "Проверяем платёж…" : `Оплатить ${priceLabel}`}</button>{paymentMessage && <p className="payment-error" role="status">{paymentMessage}</p>}<p>Оплата проходит на странице ЮKassa. Сайт не получает и не хранит данные банковской карты.</p></section></div>}
 
-          {stage === "question" && <div className="desk-layer"><article className="question-paper"><header><span>Бланк вопроса</span><strong>Номер консультации (код) — <b>{displayCode(consultationCode)}</b></strong></header>{tipVisible && <div className="timed-tip"><b>Подсказка</b> Опишите кратко свой вопрос. Ответ будет дан в течение 4 часов и появится в сейфе справа. Не указывайте ФИО, адрес, телефон, e-mail, номера документов и другие персональные данные.</div>}<label htmlFor="question">Ваш вопрос консультанту</label><textarea id="question" value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={1200} placeholder="Например: в 2025 году я продал квартиру. Нужно ли подавать декларацию и какие документы понадобятся?"/><label className="privacy-check"><input type="checkbox" checked={privacyAccepted} onChange={(event) => setPrivacyAccepted(event.target.checked)} /><span>Я ознакомился(ась) с <a href="/legal#privacy" target="_blank">условиями конфиденциальности</a> и подтверждаю, что не указываю в вопросе персональные данные свои или третьих лиц.</span></label><div className="paper-footer"><span>{question.length} / 1200</span><button className="action-button" disabled={question.trim().length < 10 || busy || !privacyAccepted} onClick={saveQuestion}>{busy ? "Сохраняем…" : "Сохранить документ"} <b>✓</b></button></div>{safeMessage && <p className="form-message" role="status">{safeMessage}</p>}</article></div>}
+          {stage === "question" && <div className="desk-layer"><article className="question-paper"><header><span>Бланк вопроса</span><strong>Номер консультации (код) — <b>{displayCode(consultationCode)}</b></strong></header>{tipVisible && <div className="timed-tip"><b>Подсказка</b> Опишите кратко свой вопрос. Ответ появится в сейфе справа не позднее срока выбранного тарифа. Не указывайте ФИО, адрес, телефон, e-mail, номера документов и другие персональные данные.</div>}<label htmlFor="question">Ваш вопрос консультанту</label><textarea id="question" value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={1200} placeholder="Например: в 2025 году я продал квартиру. Нужно ли подавать декларацию и какие документы понадобятся?"/><label className="privacy-check"><input type="checkbox" checked={privacyAccepted} onChange={(event) => setPrivacyAccepted(event.target.checked)} /><span>Я ознакомился(ась) с <a href="/legal#privacy" target="_blank">условиями конфиденциальности</a> и подтверждаю, что не указываю в вопросе персональные данные свои или третьих лиц.</span></label><div className="paper-footer"><span>{question.length} / 1200</span><button className="action-button" disabled={question.trim().length < 10 || busy || !privacyAccepted} onClick={saveQuestion}>{busy ? "Сохраняем…" : "Сохранить документ"} <b>✓</b></button></div>{safeMessage && <p className="form-message" role="status">{safeMessage}</p>}</article></div>}
 
           {stage === "waiting" && codeNoticeVisible && <div className="waiting-panel code-notice-panel"><span className="seal">✓</span><h3>Вопрос сохранён</h3><p>Ответ будет подготовлен не позднее <strong>{deadline}</strong>.</p><div className="code-reminder"><span>Ваш персональный код</span><strong>{displayCode(consultationCode)}</strong></div><div className="privacy-countdown"><b>Запомните код!</b><span>Для конфиденциальности окошко закроется через <strong>{codeNoticeSeconds}</strong> сек.</span></div></div>}
 
@@ -330,7 +370,7 @@ export default function Home() {
       </section>
 
       <footer><div className="brand"><span className="brand-mark">₽</span><span>НДФЛ<span className="brand-dot">.просто</span></span></div><nav aria-label="Правовая информация"><a href="/legal#offer">Оферта</a><a href="/legal#privacy">Конфиденциальность</a><a href="/legal#refunds">Возврат</a><a href="/legal#contacts">Контакты</a></nav><a href="#top">Наверх ↑</a></footer>
-      {stage === "room" && <button className="mobile-question-cta" type="button" onClick={() => setStage("payment")}>Задать вопрос</button>}
+      {stage === "room" && <button className="mobile-question-cta" type="button" onClick={() => setStage("payment")}>Задать вопрос · {priceLabel}</button>}
     </main>
   );
 }

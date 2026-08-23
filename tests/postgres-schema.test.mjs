@@ -53,3 +53,10 @@ test("Qwen drafts can be cached as encrypted consultation messages", () => {
   assert.match(source, /'ai_draft'/);
   assert.match(source, /consultation_ai_draft_unique/);
 });
+
+test("each consultation stores an immutable tariff snapshot", () => {
+  assert.match(source, /tariff_code varchar\(40\)/);
+  assert.match(source, /tariff_name varchar\(80\)/);
+  assert.match(source, /tariff_amount_kopecks integer/);
+  assert.match(source, /tariff_deadline_minutes integer/);
+});

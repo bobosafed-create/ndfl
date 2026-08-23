@@ -132,6 +132,21 @@ const migrations = [
         ON consultation_messages (consultation_id) WHERE author = 'ai_draft'`,
     ],
   },
+  {
+    version: 6,
+    statements: [
+      `ALTER TABLE consultations ADD COLUMN IF NOT EXISTS tariff_code varchar(40)`,
+      `ALTER TABLE consultations ADD COLUMN IF NOT EXISTS tariff_name varchar(80)`,
+      `ALTER TABLE consultations ADD COLUMN IF NOT EXISTS tariff_amount_kopecks integer`,
+      `ALTER TABLE consultations ADD COLUMN IF NOT EXISTS tariff_deadline_minutes integer`,
+      `ALTER TABLE consultations DROP CONSTRAINT IF EXISTS consultations_tariff_amount_check`,
+      `ALTER TABLE consultations ADD CONSTRAINT consultations_tariff_amount_check
+        CHECK (tariff_amount_kopecks IS NULL OR tariff_amount_kopecks BETWEEN 100 AND 100000000)`,
+      `ALTER TABLE consultations DROP CONSTRAINT IF EXISTS consultations_tariff_deadline_check`,
+      `ALTER TABLE consultations ADD CONSTRAINT consultations_tariff_deadline_check
+        CHECK (tariff_deadline_minutes IS NULL OR tariff_deadline_minutes BETWEEN 15 AND 10080)`,
+    ],
+  },
 ];
 
 function missingDatabaseVariables() {

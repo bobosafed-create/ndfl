@@ -50,6 +50,16 @@ test("payment request does not collect or transmit visitor contacts", async () =
   assert.doesNotMatch(payment, /customer|receiptEmail|phone|vat_code/);
   assert.match(payment, /amountKopecks \/ 100/);
   assert.match(payment, /toFixed\(2\)/);
+  assert.match(payment, /tariff_code: tariff\.code/);
+});
+
+test("tariff choice is validated and bound to the server-side payment amount", async () => {
+  const router = await readFile(new URL("../api/router.mjs", import.meta.url), "utf8");
+  const tariffs = await import("../lib/tariffs.mjs");
+  assert.deepEqual(tariffs.CONSULTATION_TARIFFS.map((item) => item.amountKopecks), [20000, 40000, 75000, 99000]);
+  assert.match(router, /invalid_tariff/);
+  assert.match(router, /remoteAmountKopecks !== localPayment\.amount_kopecks/);
+  assert.match(router, /metadata\?\.tariff_code !== localPayment\.tariff_code/);
 });
 
 test("consultant calculations require the consultant key", async () => {

@@ -30,6 +30,7 @@
 /* Полноэкранное рабочее место консультанта */
 .cabinet-workspace{width:min(1180px,100%)}
 .calculation-list.compact{margin-top:14px}.calculation-list.compact>div{padding:8px 4px;font-size:12px}
+.consultation-tariff{margin:8px 0 0!important;color:#60747f!important;font-size:12px!important}.consultation-tariff b{color:#b64d2c}
 .consultation-index-heading{margin-top:22px;padding-top:20px;border-top:4px solid var(--navy)}
 .archive-tabs{display:flex;gap:8px;margin-top:10px}.archive-tabs button{flex:1;border:2px solid var(--navy);border-radius:9px;padding:9px;background:#fff1c7;color:var(--navy);font-size:11px;font-weight:900;cursor:pointer}.archive-tabs button.active{background:#ef6841;color:#fff}
 .consultation-index{display:grid;gap:8px;max-height:290px;margin-top:12px;overflow:auto;padding:2px 7px 6px 2px}.consultation-index>p{padding:20px;color:#6b7a82;text-align:center}.consultation-index button{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;border:2px solid #d2a95f;border-radius:10px;padding:11px;background:#fffaf0;color:var(--navy);text-align:left;cursor:pointer}.consultation-index button.selected{border-color:var(--navy);background:#ffe08a;box-shadow:4px 4px 0 var(--navy)}.consultation-index button span{font-size:12px;font-weight:900;text-transform:uppercase}.consultation-index button small{color:#687984;white-space:nowrap}
@@ -75,6 +76,20 @@ html,body{overflow-x:hidden}
 .qa-note{width:min(940px,100%);margin:22px auto 0;color:#756244;font-size:12px;line-height:1.5;text-align:center}
 .qa-section .dotted-arrow{box-shadow:0 0 0 10px #ffe8b6}
 
+.pricing-section{padding:82px max(6vw,24px) 88px;background:#fffdf7}
+.pricing-heading{max-width:850px;margin:0 auto 38px;text-align:center}
+.pricing-heading>span{color:#a94f29;font-size:12px;font-weight:900;letter-spacing:1.8px;text-transform:uppercase}
+.pricing-heading h2{margin:13px 0 15px;font-size:clamp(38px,5vw,62px);line-height:1.03;letter-spacing:-2px}
+.pricing-heading p{color:#61727c;line-height:1.6}.pricing-heading p strong{color:var(--navy)}
+.tariff-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;max-width:1180px;margin:auto}
+.tariff-card{position:relative;display:flex;min-height:290px;flex-direction:column;padding:25px 21px;border:4px solid #d9caa5;border-radius:19px 19px 19px 6px;background:#fff;box-shadow:6px 7px 0 #ead39b;cursor:pointer;transition:.18s}
+.tariff-card:hover{transform:translateY(-3px);border-color:#8ba0a9}.tariff-card.selected{border-color:var(--navy);background:#fff8df;box-shadow:7px 8px 0 var(--sun);transform:translateY(-3px)}
+.tariff-card input{position:absolute;opacity:0;pointer-events:none}.tariff-radio{width:25px;height:25px;margin-bottom:20px;border:3px solid var(--navy);border-radius:50%;background:#fff;box-shadow:inset 0 0 0 5px #fff}.tariff-card.selected .tariff-radio{background:var(--orange)}
+.tariff-badge{position:absolute;right:14px;top:15px;padding:7px 9px;border-radius:8px;background:#dff3e8;color:#24734d;font-size:9px;letter-spacing:.8px;text-transform:uppercase}
+.tariff-card>strong{font-size:22px;letter-spacing:-.5px}.tariff-card>em{margin:7px 0;color:var(--orange);font-size:34px;font-style:normal;font-weight:900}.tariff-card>small{color:#2d7253;font-size:11px;font-weight:900;text-transform:uppercase}.tariff-card>p{margin:18px 0 0;color:#65757e;font-size:14px;line-height:1.55}
+.tariff-summary{display:flex;align-items:center;justify-content:space-between;gap:30px;max-width:940px;margin:30px auto 0;padding:22px 25px;border:4px solid var(--navy);border-radius:16px 16px 16px 5px;background:#17384a;color:#fff;box-shadow:8px 8px 0 #f0bd4f}.tariff-summary>div:first-child{display:flex;flex-direction:column;gap:4px}.tariff-summary span{color:#ffd35a;font-size:12px;font-weight:900;text-transform:uppercase}.tariff-summary strong{font-size:25px}.tariff-summary small{color:#d7e2e6}.tariff-summary>div:last-child{display:flex;align-items:center;gap:12px}.tariff-summary a,.tariff-reset{padding:13px 16px;border:0;border-radius:10px;background:var(--orange);color:#fff;font-size:12px;font-weight:900;text-decoration:none;cursor:pointer}.tariff-reset{background:#fff3cd;color:var(--navy)}
+.payment-deadline{margin:-8px 0 16px!important;color:#2d7253!important;font-size:12px!important;font-weight:900;text-transform:uppercase}
+
 .pay-button{width:230px;gap:13px;padding-inline:19px}
 .pay-button strong{padding-left:13px;border-left:1px solid #ffffff73;white-space:nowrap}
 .door-wrap p{color:#526671;font-size:12px;font-weight:800}
@@ -101,6 +116,7 @@ html,body{overflow-x:hidden}
   .guide{padding-top:58px}
   .consultant-label{right:-35px}
   .safe{right:12px}
+  .tariff-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 
 @media(max-width:700px){
@@ -112,6 +128,7 @@ html,body{overflow-x:hidden}
   .qa-list summary span{flex-basis:35px;height:35px}
   .qa-answer{padding:3px 17px 20px}
   .qa-answer p{font-size:14px}
+  .pricing-section{padding:60px 16px 70px}.pricing-heading h2{font-size:38px;letter-spacing:-1.5px}.tariff-grid{grid-template-columns:1fr}.tariff-card{min-height:0}.tariff-summary{align-items:stretch;flex-direction:column}.tariff-summary>div:last-child{justify-content:space-between}.tariff-summary a,.tariff-reset{flex:1;text-align:center}
 }
 
 @media(max-width:520px){

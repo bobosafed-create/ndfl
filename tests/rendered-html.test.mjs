@@ -31,8 +31,12 @@ test("server-renders the consultation landing page", async () => {
   const html = await response.text();
   assert.match(html, /<title>Проблемы с НДФЛ — вам сюда<\/title>/i);
   assert.match(html, /Нужна консультация/);
-  assert.match(html, /Проверенный налоговым специалистом письменный ответ в течение 4 часов/);
-  assert.match(html, /<strong>100 ₽<\/strong>/);
+  assert.match(html, /Проверенный налоговым специалистом письменный ответ в срок выбранного тарифа/);
+  assert.match(html, /Выберите подходящий тариф/);
+  assert.match(html, /Базовый/);
+  assert.match(html, /Стандартный/);
+  assert.match(html, /Срочный/);
+  assert.match(html, /Сложный случай/);
   assert.match(html, /Задаваемые вопросы/);
   assert.match(html, /Входит ли в консультацию дополнительный уточняющий вопрос/);
   assert.match(html, /Дополнительный или уточняющий вопрос оформляется как новая консультация/);
@@ -63,13 +67,17 @@ test("keeps consultation codes four digits and uses the protected payment flow",
   assert.match(page, /mobile-question-cta" type="button" onClick=\{\(\) => setStage\("payment"\)\}/);
   assert.match(page, /<span>ВХОД<\/span><strong>\{priceLabel\}<\/strong>/);
   assert.doesNotMatch(page, /ВХОД[^\n]*срок/i);
-  assert.match(page, /в течение 4 часов/);
+  assert.match(page, /Срок будет указан после оплаты/);
+  assert.match(page, /body: JSON\.stringify\(\{ tariffCode: selectedTariffCode \|\| null \}\)/);
+  assert.match(page, /setSelectedTariffCode\(""\)/);
 });
 
-test("sets a four-hour answer deadline for new paid consultations", async () => {
+test("sets the selected tariff deadline when the visitor saves a question", async () => {
   const router = await readFile(new URL("../api/router.mjs", import.meta.url), "utf8");
-  assert.match(router, /interval '4 hours'/);
-  assert.doesNotMatch(router, /interval '1 hour'/);
+  assert.match(router, /COALESCE\(tariff_deadline_minutes, 240\) \* interval '1 minute'/);
+  assert.match(router, /SET status = 'question_submitted'/);
+  assert.match(router, /RETURNING answer_due_at/);
+  assert.doesNotMatch(router, /interval '4 hours'/);
 });
 
 test("legal documents describe the anonymous mode without hiding technical processing", async () => {
@@ -102,4 +110,6 @@ test("renders the consultant cabinet", async () => {
   assert.match(page, /window\.print/);
   assert.match(page, /Установить цену на сайте/);
   assert.match(page, /consultant\/attachments/);
+  assert.match(page, /цена по умолчанию/i);
+  assert.match(page, /Тариф:/);
 });
