@@ -58,7 +58,7 @@ export default function Home() {
   const answerPages = useMemo(() => paginateAnswer(answer), [answer]);
 
   const deadline = useMemo(() => {
-    if (!answerDueAt) return "в течение часа";
+    if (!answerDueAt) return "в течение 4 часов";
     return new Date(answerDueAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
   }, [answerDueAt]);
 
@@ -269,11 +269,30 @@ export default function Home() {
         <div className="consultant-portrait">
           <div className="portrait-sun" aria-hidden="true">✦</div>
           <div className="portrait-frame">
-            <img src="/consultant-v2.png" alt="Дружелюбный консультант по НДФЛ в квадратных очках указывает вниз" />
+            <img src="/consultant-male-v3.png" alt="Дежурный консультант по НДФЛ в квадратных очках указывает вниз" />
           </div>
-          <div className="consultant-label"><span>Ваш консультант</span><strong>Анна</strong><small><i /> Сейчас на связи</small></div>
+          <div className="consultant-label"><span>Дежурный</span><strong>Консультант</strong><small><i /> Сейчас на связи</small></div>
         </div>
         <div className="guide-copy"><span className="mini-label">Ваш проводник</span><h2>Нужна консультация?<br/><span>Пройдите сюда.</span></h2><p>Три шага: войдите, оставьте вопрос, заберите ответ по своему коду.</p></div>
+      </section>
+
+      <section className="qa-section" aria-labelledby="qa-heading">
+        <div className="qa-heading"><span>Примеры консультаций</span><h2 id="qa-heading">Задаваемые вопросы<br/>и наши ответы</h2><p>Краткие разборы типичных ситуаций. Откройте интересующий вопрос.</p></div>
+        <div className="qa-list">
+          <details>
+            <summary><span>01</span>Квартиру подарил дальний родственник. Когда возникает налог и как уменьшить его при продаже?</summary>
+            <div className="qa-answer"><p>При дарении недвижимости от дяди НДФЛ, как правило, возникает: дядя не относится к близким родственникам, освобождённым от налога. При продаже раньше минимального срока владения доход можно уменьшить либо на имущественный вычет 1 млн ₽, либо на подтверждённые расходы — выбор зависит от документов и обстоятельств.</p><p>В отдельных случаях учитываются расходы дарителя на покупку квартиры либо стоимость, с которой был уплачен НДФЛ при дарении. Точный расчёт требует проверки дат, кадастровой стоимости и документов дарителя.</p><a href="https://www.nalog.gov.ru/rn24/taxation/taxes/dec/10573723/" target="_blank" rel="noreferrer">Проверить правило на сайте ФНС России →</a></div>
+          </details>
+          <details>
+            <summary><span>02</span>Можно ли получить имущественный вычет при покупке квартиры у бывшего супруга после развода?</summary>
+            <div className="qa-answer"><p>Сам по себе статус бывшего супруга не означает автоматический отказ: бывшие супруги прямо не названы в перечне взаимозависимых лиц. Но сделка должна быть реальной, оплаченной и зарегистрированной, а у покупателя должно сохраняться право на вычет.</p><p>Налоговая вправе оценивать фактическую взаимозависимость и обстоятельства сделки. Поэтому важны договор, выписка ЕГРН, подтверждение банковской оплаты и документ о расторжении брака.</p><a href="https://www.consultant.ru/document/cons_doc_LAW_404023/2fbf67169cd47e49fdfbe74fd52ebb6cf47336c3/" target="_blank" rel="noreferrer">Перечень взаимозависимых лиц — статья 105.1 НК РФ →</a></div>
+          </details>
+          <details>
+            <summary><span>03</span>Как рассчитывается налог на проценты по банковским вкладам в 2026 году?</summary>
+            <div className="qa-answer"><p>В 2026 году уплачивается налог с процентов, полученных в 2025 году. Необлагаемый минимум за 2025 год равен 210 000 ₽: 1 млн ₽ умножается на максимальную ключевую ставку 21% на первое число месяца в том году.</p><p>Для процентов, полученных уже в 2026 году, необлагаемый минимум станет окончательно известен после завершения года; налог по ним уплачивается в 2027 году. ФНС рассчитывает сумму сама по сведениям банков.</p><a href="https://www.nalog.gov.ru/rn62/news/activities_fts/16639281/" target="_blank" rel="noreferrer">Разъяснение ФНС России →</a></div>
+          </details>
+        </div>
+        <div className="qa-note">Примеры носят информационный характер. Персональный ответ учитывает обстоятельства, которые вы укажете в вопросе.</div>
         <div className="dotted-arrow">↓</div>
       </section>
 
@@ -283,13 +302,13 @@ export default function Home() {
           <div className="window"><span/><span/><span/><span/></div><div className="plant"><i/><b>✦</b></div>
           <div className="door-wrap">
             <div className={`door ${stage !== "room" && stage !== "payment" ? "door-active" : ""}`}><div className="door-sign">КОНСУЛЬТАНТ<small>на связи</small></div><div className="door-knob" /></div>
-            {stage === "room" && <><button className="pay-button" onClick={() => setStage("payment")}>ВХОД <span>→</span></button><p>Оплатите <strong>{priceLabel}</strong> и получите консультацию</p></>}
+            {stage === "room" && <><button className="pay-button" onClick={() => setStage("payment")}><span>ВХОД</span><strong>{priceLabel}</strong></button><p>Один письменный вопрос без регистрации</p></>}
           </div>
-          <div className={`safe ${answerReady ? "safe-ready" : ""}`} aria-label="Сейф с ответом"><span className="safe-label">{answerReady ? "ОТВЕТ ГОТОВ" : "ВАШ ОТВЕТ"}</span><div className={`safe-door ${stage === "answer" ? "safe-open" : ""}`}><i className="safe-wheel">✦</i><b>КОД</b></div><div className="safe-legs"><i/><i/></div></div><div className="rug" />
+          <div className={`safe ${answerReady ? "safe-ready" : ""}`} aria-label="Защищённый сейф с ответом"><span className="safe-label">{answerReady ? "ОТВЕТ ГОТОВ" : "Проверенный налоговым специалистом письменный ответ в течение 4 часов"}</span><div className={`safe-door ${stage === "answer" ? "safe-open" : ""}`}><i className="safe-wheel" aria-hidden="true"><span /></i><b>ПЕРСОНАЛЬНЫЙ КОД</b></div><div className="safe-legs"><i/><i/></div></div><div className="rug" />
 
           {stage === "payment" && <div className="modal-backdrop"><section className="payment-card" role="dialog" aria-modal="true" aria-labelledby="payment-title"><button className="close" onClick={() => setStage("room")} aria-label="Закрыть">×</button><span className="payment-icon">₽</span><small>Защищённая оплата через ЮKassa</small><h3 id="payment-title">Консультация по НДФЛ</h3><div className="price-row"><span>К оплате</span><strong>{priceLabel}</strong></div><button className="action-button" disabled={busy || Boolean(paymentMessage && consultationId)} onClick={startPayment}>{busy ? "Открываем оплату…" : consultationId ? "Проверяем платёж…" : `Оплатить ${priceLabel}`}</button>{paymentMessage && <p className="payment-error" role="status">{paymentMessage}</p>}<p>Оплата проходит на странице ЮKassa. Сайт не получает и не хранит данные банковской карты.</p></section></div>}
 
-          {stage === "question" && <div className="desk-layer"><article className="question-paper"><header><span>Бланк вопроса</span><strong>Номер консультации (код) — <b>{displayCode(consultationCode)}</b></strong></header>{tipVisible && <div className="timed-tip"><b>Подсказка</b> Опишите кратко свой вопрос. Ответ будет дан в течение часа и появится в сейфе справа. Не указывайте ФИО, адрес, телефон, e-mail, номера документов и другие персональные данные.</div>}<label htmlFor="question">Ваш вопрос консультанту</label><textarea id="question" value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={1200} placeholder="Например: в 2025 году я продал квартиру. Нужно ли подавать декларацию и какие документы понадобятся?"/><label className="privacy-check"><input type="checkbox" checked={privacyAccepted} onChange={(event) => setPrivacyAccepted(event.target.checked)} /><span>Я ознакомился(ась) с <a href="/legal#privacy" target="_blank">условиями конфиденциальности</a> и подтверждаю, что не указываю в вопросе персональные данные свои или третьих лиц.</span></label><div className="paper-footer"><span>{question.length} / 1200</span><button className="action-button" disabled={question.trim().length < 10 || busy || !privacyAccepted} onClick={saveQuestion}>{busy ? "Сохраняем…" : "Сохранить документ"} <b>✓</b></button></div>{safeMessage && <p className="form-message" role="status">{safeMessage}</p>}</article></div>}
+          {stage === "question" && <div className="desk-layer"><article className="question-paper"><header><span>Бланк вопроса</span><strong>Номер консультации (код) — <b>{displayCode(consultationCode)}</b></strong></header>{tipVisible && <div className="timed-tip"><b>Подсказка</b> Опишите кратко свой вопрос. Ответ будет дан в течение 4 часов и появится в сейфе справа. Не указывайте ФИО, адрес, телефон, e-mail, номера документов и другие персональные данные.</div>}<label htmlFor="question">Ваш вопрос консультанту</label><textarea id="question" value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={1200} placeholder="Например: в 2025 году я продал квартиру. Нужно ли подавать декларацию и какие документы понадобятся?"/><label className="privacy-check"><input type="checkbox" checked={privacyAccepted} onChange={(event) => setPrivacyAccepted(event.target.checked)} /><span>Я ознакомился(ась) с <a href="/legal#privacy" target="_blank">условиями конфиденциальности</a> и подтверждаю, что не указываю в вопросе персональные данные свои или третьих лиц.</span></label><div className="paper-footer"><span>{question.length} / 1200</span><button className="action-button" disabled={question.trim().length < 10 || busy || !privacyAccepted} onClick={saveQuestion}>{busy ? "Сохраняем…" : "Сохранить документ"} <b>✓</b></button></div>{safeMessage && <p className="form-message" role="status">{safeMessage}</p>}</article></div>}
 
           {stage === "waiting" && codeNoticeVisible && <div className="waiting-panel code-notice-panel"><span className="seal">✓</span><h3>Вопрос сохранён</h3><p>Ответ будет подготовлен не позднее <strong>{deadline}</strong>.</p><div className="code-reminder"><span>Ваш персональный код</span><strong>{displayCode(consultationCode)}</strong></div><div className="privacy-countdown"><b>Запомните код!</b><span>Для конфиденциальности окошко закроется через <strong>{codeNoticeSeconds}</strong> сек.</span></div></div>}
 
@@ -303,6 +322,7 @@ export default function Home() {
       </section>
 
       <footer><div className="brand"><span className="brand-mark">₽</span><span>НДФЛ<span className="brand-dot">.просто</span></span></div><nav aria-label="Правовая информация"><a href="/legal#offer">Оферта</a><a href="/legal#privacy">Конфиденциальность</a><a href="/legal#refunds">Возврат</a><a href="/legal#contacts">Контакты</a></nav><a href="#top">Наверх ↑</a></footer>
+      {stage === "room" && <button className="mobile-question-cta" type="button" onClick={() => setStage("payment")}>Задать вопрос</button>}
     </main>
   );
 }

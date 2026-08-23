@@ -48,3 +48,78 @@ footer nav{display:flex;flex-wrap:wrap;justify-content:center;gap:14px 22px}.led
 @media(max-width:800px){.room.stage-question{height:760px}.answer-carousel{width:98%}.answer-track .answer-paper{height:520px;padding:24px}.answer-track .answer-paper h3{margin-top:50px}.answer-track .consultation-answer{max-height:270px;font-size:15px}.answer-pagination{left:4px;right:4px}.answer-pagination button{min-width:96px;padding:9px}.answer-pagination span{font-size:11px}}
 @media(max-width:520px){.room{height:620px}.room.stage-question{height:790px}.answer-layer{padding:8px}.answer-carousel{width:100%;padding-bottom:66px}.answer-track .answer-paper{height:535px;padding:18px 16px;border-width:2px;box-shadow:6px 7px 0 #17384a70}.answer-track .answer-paper header{gap:7px;padding-bottom:10px;font-size:9px}.answer-track .answer-paper h3{margin:52px 0 10px;font-size:24px}.answer-track .consultation-answer{max-height:300px;padding-right:4px;font-size:14px;line-height:1.55}.answer-track .answer-note{padding:9px;font-size:10px}.answer-track .consultant-stamp{right:15px;top:72px;transform:scale(.8) rotate(9deg)}.answer-pagination{bottom:5px}.answer-pagination button{min-width:82px;padding:9px 7px;font-size:11px}.answer-pagination span{padding:7px;font-size:10px}.answer-dots{bottom:-11px}}
 html,body{overflow-x:hidden}
+
+/* Маркетинговое обновление главной страницы */
+.hero{min-height:520px;padding-bottom:38px}
+.hero-grid{margin-top:38px;gap:34px}
+.people-scene{height:350px;transform:scale(.78);transform-origin:center}
+
+.consultant-label{right:-48px;width:210px}
+.consultant-label strong{margin:4px 0;font-size:20px;letter-spacing:-.4px;text-transform:uppercase}
+
+.qa-section{position:relative;padding:78px max(6vw,24px) 96px;background:linear-gradient(135deg,#fff8df,#ffe5a7)}
+.qa-heading{max-width:800px;margin:0 auto 36px;text-align:center}
+.qa-heading>span{color:#a94f29;font-size:12px;font-weight:900;letter-spacing:1.8px;text-transform:uppercase}
+.qa-heading h2{margin:13px 0 15px;font-size:clamp(38px,5vw,64px);line-height:1.02;letter-spacing:-2px}
+.qa-heading p{color:#61727c;line-height:1.6}
+.qa-list{display:grid;gap:14px;width:min(940px,100%);margin:auto}
+.qa-list details{overflow:hidden;border:4px solid var(--navy);border-radius:16px 16px 16px 5px;background:#fffdf7;box-shadow:7px 7px 0 #e3a547}
+.qa-list summary{display:flex;align-items:center;gap:16px;padding:20px 24px;color:var(--navy);font-size:17px;font-weight:900;line-height:1.35;cursor:pointer;list-style:none}
+.qa-list summary::-webkit-details-marker{display:none}
+.qa-list summary:after{content:"+";margin-left:auto;color:var(--orange);font-size:30px;line-height:1}
+.qa-list details[open] summary:after{content:"−"}
+.qa-list summary span{display:grid;place-items:center;flex:0 0 42px;height:42px;border-radius:11px 11px 11px 4px;background:var(--navy);color:#ffd35a;font-size:13px}
+.qa-answer{padding:2px 28px 25px 86px;border-top:2px dashed #ddbd76;color:#526671}
+.qa-answer p{line-height:1.7}
+.qa-answer a{display:inline-block;margin-top:5px;color:#a94425;font-size:13px;font-weight:900}
+.qa-note{width:min(940px,100%);margin:22px auto 0;color:#756244;font-size:12px;line-height:1.5;text-align:center}
+.qa-section .dotted-arrow{box-shadow:0 0 0 10px #ffe8b6}
+
+.pay-button{width:230px;gap:13px;padding-inline:19px}
+.pay-button strong{padding-left:13px;border-left:1px solid #ffffff73;white-space:nowrap}
+.door-wrap p{color:#526671;font-size:12px;font-weight:800}
+
+.safe{right:55px;bottom:105px;width:245px;height:310px;border-radius:10px;background:linear-gradient(145deg,#577684,#294957);box-shadow:inset 0 0 0 4px #79929c,10px 12px 0 #17384a33;transform:none}
+.safe-label{left:auto;right:-18px;top:-118px;width:315px;padding:14px 16px;border:4px solid var(--navy);border-radius:12px 12px 12px 4px;background:#fff8df;color:var(--navy);box-shadow:7px 7px 0 #d8993e;font-size:14px;line-height:1.35;letter-spacing:.15px;text-align:center}
+.safe-label:before{content:"ПРОВЕРЕНО";display:block;margin-bottom:5px;color:#2e8059;font-size:9px;letter-spacing:1.7px}
+.safe-door{inset:24px;border-width:6px;border-radius:6px;background:linear-gradient(145deg,#668591,#3b5e6c);box-shadow:inset 0 0 0 3px #8ba1aa}
+.safe-wheel{position:relative;width:100px;height:100px;border-color:#102d3d;background:radial-gradient(circle,#eaf0ec 0 13%,#294957 14% 18%,#c6d5d5 19% 45%,#294957 46% 53%,#e7eeee 54%);box-shadow:0 5px 0 #102d3d;font-size:0}
+.safe-wheel:before,.safe-wheel:after{content:"";position:absolute;left:50%;top:50%;width:78px;height:5px;border-radius:5px;background:#294957;transform:translate(-50%,-50%)}
+.safe-wheel:after{transform:translate(-50%,-50%) rotate(90deg)}
+.safe-wheel span{position:relative;z-index:1;width:20px;height:20px;border:5px solid #294957;border-radius:50%;background:#eaf0ec}
+.safe-door b{left:0;right:0;bottom:12px;color:#eef6f4;font-size:9px;letter-spacing:1.7px;text-align:center}
+.safe.safe-ready .safe-label{left:auto;right:20px;top:-62px;width:auto;padding:9px 13px;background:#3fae77;color:#fff;box-shadow:5px 5px 0 #17384a}
+.safe.safe-ready .safe-label:before{display:none}
+@keyframes safeGlow{50%{filter:drop-shadow(0 0 14px #86e1b1);transform:scale(1.018)}}
+
+.mobile-question-cta{display:none;border:0;cursor:pointer}
+
+@media(max-width:800px){
+  .hero{min-height:0;padding-bottom:5px}
+  .hero-grid{margin-top:35px}
+  .people-scene{height:300px;transform:scale(.7);margin:-28px -80px}
+  .guide{padding-top:58px}
+  .consultant-label{right:-35px}
+  .safe{right:12px}
+}
+
+@media(max-width:700px){
+  body{padding-bottom:72px}
+  .mobile-question-cta{position:fixed;z-index:80;left:12px;right:12px;bottom:10px;display:flex;align-items:center;justify-content:center;height:56px;border:3px solid var(--navy);border-radius:14px 14px 14px 5px;background:var(--orange);box-shadow:0 6px 0 var(--navy);color:#fff;text-decoration:none;font-weight:900;text-transform:uppercase;letter-spacing:.7px}
+  .qa-section{padding:60px 16px 82px}
+  .qa-heading h2{font-size:38px;letter-spacing:-1.5px}
+  .qa-list summary{gap:11px;padding:16px 14px;font-size:14px}
+  .qa-list summary span{flex-basis:35px;height:35px}
+  .qa-answer{padding:3px 17px 20px}
+  .qa-answer p{font-size:14px}
+}
+
+@media(max-width:520px){
+  .hero-grid{margin-top:28px}
+  .people-scene{height:270px;transform:scale(.62);margin:-34px -125px}
+  .guide{min-height:650px}
+  .consultant-label{right:-23px}
+  .safe{right:-10px;transform:scale(.56)}
+  .safe-label{right:12px;width:330px}
+  .door-wrap{left:35%}
+}

@@ -31,7 +31,10 @@ test("server-renders the consultation landing page", async () => {
   const html = await response.text();
   assert.match(html, /<title>Проблемы с НДФЛ — вам сюда<\/title>/i);
   assert.match(html, /Нужна консультация/);
-  assert.match(html, /Оплатите <strong>100 ₽<\/strong>/);
+  assert.match(html, /Проверенный налоговым специалистом письменный ответ в течение 4 часов/);
+  assert.match(html, /<strong>100 ₽<\/strong>/);
+  assert.match(html, /Задаваемые вопросы/);
+  assert.match(html, /Дежурный/);
   assert.match(html, /зашифрованном виде/);
   assert.doesNotMatch(html, /codex-preview|Building your site/);
 });
@@ -52,6 +55,19 @@ test("keeps consultation codes four digits and uses the protected payment flow",
   assert.doesNotMatch(page, /type="file"/);
   assert.doesNotMatch(page, /\/api\/consultations\/attachments/);
   assert.match(page, /не указываю в вопросе персональные данные/);
+  assert.match(page, /consultant-male-v3\.png/);
+  assert.doesNotMatch(page, /Ваш консультант<\/span><strong>Анна/);
+  assert.match(page, /className="mobile-question-cta"/);
+  assert.match(page, /mobile-question-cta" type="button" onClick=\{\(\) => setStage\("payment"\)\}/);
+  assert.match(page, /<span>ВХОД<\/span><strong>\{priceLabel\}<\/strong>/);
+  assert.doesNotMatch(page, /ВХОД[^\n]*срок/i);
+  assert.match(page, /в течение 4 часов/);
+});
+
+test("sets a four-hour answer deadline for new paid consultations", async () => {
+  const router = await readFile(new URL("../api/router.mjs", import.meta.url), "utf8");
+  assert.match(router, /interval '4 hours'/);
+  assert.doesNotMatch(router, /interval '1 hour'/);
 });
 
 test("legal documents describe the anonymous mode without hiding technical processing", async () => {

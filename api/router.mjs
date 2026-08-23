@@ -181,7 +181,7 @@ async function synchronizePayment(database, consultationId) {
     await database.query(
       `UPDATE consultations
        SET status = CASE WHEN status = 'awaiting_payment' THEN 'paid' ELSE status END,
-           answer_due_at = COALESCE(answer_due_at, now() + interval '1 hour'),
+           answer_due_at = COALESCE(answer_due_at, now() + interval '4 hours'),
            updated_at = now()
        WHERE id = $1`,
       [consultationId],
