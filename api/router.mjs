@@ -18,6 +18,12 @@ import {
 } from "../lib/ai.mjs";
 
 const rateLimits = new Map();
+const ANSWER_NOTICE = "Пометка консультанта: Ответ составлен по предоставленным данным. Если у вас имеются дополнительные обезличенные сведения, способные повлиять на вывод, оформите новый вопрос в том же порядке, что и первоначальный.";
+const MAX_ANSWER_LENGTH = 6000;
+
+function withAnswerNotice(answer) {
+  return answer.endsWith(ANSWER_NOTICE) ? answer : `${answer}\n\n${ANSWER_NOTICE}`;
+}
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -290,7 +296,7 @@ async function openAnswer(request) {
     [consultation.id],
   );
   if (!result.rows[0]) return json({ error: "answer_not_ready" }, 409);
-  const answer = decryptMessage(consultation.id, "consultant", result.rows[0]);
+  const answer = withAnswerNotice(decryptMessage(consultation.id, "consultant", result.rows[0]));
   await database.query(
     "UPDATE consultations SET failed_access_attempts = 0, access_locked_until = NULL, updated_at = now() WHERE id = $1",
     [consultation.id],
@@ -476,7 +482,8 @@ async function consultantAnswer(request) {
   }
   const input = await body(request);
   const answer = typeof input.answer === "string" ? input.answer.trim() : "";
-  if (!validUuid(input.consultationId) || answer.length < 10 || answer.length > 6000) {
+  const answerWithNotice = withAnswerNotice(answer);
+  if (!validUuid(input.consultationId) || answer.length < 10 || answerWithNotice.length > MAX_ANSWER_LENGTH) {
     return json({ error: "invalid_answer" }, 400);
   }
   const database = getDatabasePool();
@@ -485,7 +492,7 @@ async function consultantAnswer(request) {
     [input.consultationId],
   );
   if (!consultation.rows[0]) return json({ error: "not_found" }, 404);
-  const encrypted = encryptMessage(input.consultationId, "consultant", answer);
+  const encrypted = encryptMessage(input.consultationId, "consultant", answerWithNotice);
   const client = await database.connect();
   try {
     await client.query("BEGIN");
@@ -500,7 +507,7 @@ async function consultantAnswer(request) {
       [input.consultationId],
     );
     await client.query("COMMIT");
-    return json({ saved: true });
+    return json({ saved: true, answer: answerWithNotice });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     throw error;

@@ -109,3 +109,13 @@ test("consultant archive and deletion remain authenticated server operations", a
   assert.match(router, /status = 'closed'/);
   assert.match(router, /consultantAuthorized\(request\)/);
 });
+
+test("every saved consultant answer receives the data-sufficiency notice", async () => {
+  const router = await readFile(new URL("../api/router.mjs", import.meta.url), "utf8");
+  const cabinet = await readFile(new URL("../app/consultant/page.tsx", import.meta.url), "utf8");
+  assert.match(router, /const ANSWER_NOTICE = "Пометка консультанта: Ответ составлен по предоставленным данным/);
+  assert.match(router, /function withAnswerNotice\(answer\)/);
+  assert.match(router, /withAnswerNotice\(decryptMessage/);
+  assert.match(router, /encryptMessage\(input\.consultationId, "consultant", answerWithNotice\)/);
+  assert.match(cabinet, /автоматически добавляется пометка/);
+});

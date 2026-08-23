@@ -34,6 +34,8 @@ test("server-renders the consultation landing page", async () => {
   assert.match(html, /Проверенный налоговым специалистом письменный ответ в течение 4 часов/);
   assert.match(html, /<strong>100 ₽<\/strong>/);
   assert.match(html, /Задаваемые вопросы/);
+  assert.match(html, /Входит ли в консультацию дополнительный уточняющий вопрос/);
+  assert.match(html, /Дополнительный или уточняющий вопрос оформляется как новая консультация/);
   assert.match(html, /Дежурный/);
   assert.match(html, /зашифрованном виде/);
   assert.doesNotMatch(html, /codex-preview|Building your site/);
@@ -78,6 +80,9 @@ test("legal documents describe the anonymous mode without hiding technical proce
   assert.match(legal, /Функция загрузки файлов и документов отключена/);
   assert.match(legal, /не означает полного отсутствия технической обработки/);
   assert.match(legal, /IP-адрес и время запросов/);
+  assert.match(legal, /Дополнительный или уточняющий вопрос в эту услугу не входит/);
+  assert.match(legal, /Ответ составлен по предоставленным данным/);
+  assert.match(legal, /не ограничивает обязательные права потребителя/);
 });
 
 test("renders the consultant cabinet", async () => {

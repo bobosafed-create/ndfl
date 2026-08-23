@@ -116,7 +116,8 @@ export default function ConsultantCabinet() {
         body: JSON.stringify({ consultationId, answer }),
       });
       if (!response.ok) throw new Error("save_failed");
-      setAnswers((current) => ({ ...current, [consultationId]: answer }));
+      const result = await response.json();
+      setAnswers((current) => ({ ...current, [consultationId]: result.answer || answer }));
       await load(accessKey, view);
       setSelectedId(consultationId);
       setMessage("Ответ сохранён и уже доступен посетителю в сейфе.");
@@ -296,10 +297,11 @@ export default function ConsultantCabinet() {
                 <div className="ai-draft-actions no-print"><button className="ai-draft-button" type="button" disabled={Boolean(draftingId)} onClick={() => void createAiDraft(selected.id)}>{draftingId === selected.id ? "Готовим черновик…" : "Подготовить черновик с ИИ"}</button><button className="copy-question" type="button" onClick={() => void copyQuestion(selected.question)}>Скопировать вопрос</button></div>
                 <p className="ai-review-note no-print">ИИ создаёт обычный текст без звёздочек. Черновик не отправляется автоматически: проверьте и отредактируйте его.</p>
                 <label className="answer-label" htmlFor={`answer-${selected.id}`}>{selected.status === "answered" ? "Редактировать отправленный ответ" : "Ответ консультанта"}</label>
-                <textarea id={`answer-${selected.id}`} maxLength={6000} rows={18} value={selectedAnswer} onChange={(event) => setAnswers((current) => ({ ...current, [selected.id]: event.target.value }))} placeholder="Дайте понятный ответ и перечислите необходимые действия или документы." />
+                <textarea id={`answer-${selected.id}`} maxLength={5750} rows={18} value={selectedAnswer} onChange={(event) => setAnswers((current) => ({ ...current, [selected.id]: event.target.value }))} placeholder="Дайте понятный ответ и перечислите необходимые действия или документы." />
+                <p className="answer-auto-note no-print">При отправке в конец ответа автоматически добавляется пометка о том, что вывод основан на предоставленных данных, а дополнительные сведения оформляются новым вопросом.</p>
                 <section className="consultation-document answer-document print-only"><h3>Ответ консультанта</h3><p>{selectedAnswer}</p></section>
               </>}
-              <footer className="consultation-editor-actions no-print"><button className="print-button" type="button" onClick={() => window.print()}>Печать</button>{selected.status === "archived" ? <button className="restore-button" type="button" disabled={loading} onClick={() => void setArchived(selected.id, false)}>Вернуть из архива</button> : selected.status === "answered" ? <button className="archive-button" type="button" disabled={loading} onClick={() => void setArchived(selected.id, true)}>В архив</button> : null}<button className="delete-button" type="button" disabled={loading} onClick={() => void deleteConsultation(selected.id)}>Удалить вопрос и ответ</button>{selected.status !== "archived" && <><span>{selectedAnswer.length} / 6000</span><button className="action-button" disabled={selectedAnswer.trim().length < 10 || loading} onClick={() => void saveAnswer(selected.id)}>Отправить в сейф</button></>}</footer>
+              <footer className="consultation-editor-actions no-print"><button className="print-button" type="button" onClick={() => window.print()}>Печать</button>{selected.status === "archived" ? <button className="restore-button" type="button" disabled={loading} onClick={() => void setArchived(selected.id, false)}>Вернуть из архива</button> : selected.status === "answered" ? <button className="archive-button" type="button" disabled={loading} onClick={() => void setArchived(selected.id, true)}>В архив</button> : null}<button className="delete-button" type="button" disabled={loading} onClick={() => void deleteConsultation(selected.id)}>Удалить вопрос и ответ</button>{selected.status !== "archived" && <><span>{selectedAnswer.length} / 5750</span><button className="action-button" disabled={selectedAnswer.trim().length < 10 || loading} onClick={() => void saveAnswer(selected.id)}>Отправить в сейф</button></>}</footer>
             </article>
           )}
         </section>

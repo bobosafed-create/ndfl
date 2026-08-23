@@ -123,3 +123,5 @@ html,body{overflow-x:hidden}
   .safe-label{right:12px;width:330px}
   .door-wrap{left:35%}
 }
+
+.answer-auto-note{margin:10px 0 0;padding:11px 13px;border-radius:8px;background:#fff0c5;color:#6c5c41;font-size:11px;line-height:1.45}
