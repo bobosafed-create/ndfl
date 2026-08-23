@@ -48,3 +48,8 @@ test("dynamic price and encrypted attachments have durable schema", () => {
   assert.match(source, /size_bytes integer NOT NULL/);
   assert.match(source, /UNIQUE \(consultation_id, ordinal\)/);
 });
+
+test("Qwen drafts can be cached as encrypted consultation messages", () => {
+  assert.match(source, /'ai_draft'/);
+  assert.match(source, /consultation_ai_draft_unique/);
+});

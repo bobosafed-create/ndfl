@@ -78,6 +78,8 @@ test("AI drafts are server-side, authenticated and never sent directly to the vi
   const ai = await readFile(new URL("../lib/ai.mjs", import.meta.url), "utf8");
   const cabinet = await readFile(new URL("../app/consultant/page.tsx", import.meta.url), "utf8");
   assert.match(router, /consultantAiDraft/);
+  assert.match(router, /author = 'ai_draft'/);
+  assert.match(router, /cached: true/);
   assert.match(router, /consultantAuthorized\(request\)/);
   assert.match(ai, /process\.env\.TIMEWEB_AI_API_KEY/);
   assert.match(ai, /api\.timeweb\.ai\/v1/);
@@ -85,6 +87,7 @@ test("AI drafts are server-side, authenticated and never sent directly to the vi
   assert.match(ai, /dashscope\/qwen3\.5-plus/);
   assert.doesNotMatch(cabinet, /TIMEWEB_AI_API_KEY/);
   assert.match(cabinet, /Подготовить черновик с ИИ/);
+  assert.match(cabinet, /Qwen готовит черновик ответа/);
   assert.match(cabinet, /Отправить в сейф/);
 });
 
@@ -94,6 +97,12 @@ test("AI draft formatting removes Markdown stars before editing", async () => {
     cleanDraftFormatting("**Краткий вывод**\n* Первый шаг\n*важно*"),
     "Краткий вывод\n• Первый шаг\nважно",
   );
+});
+
+test("Qwen receives enough time for a detailed tax draft", async () => {
+  const ai = await readFile(new URL("../lib/ai.mjs", import.meta.url), "utf8");
+  assert.match(ai, /120_000/);
+  assert.doesNotMatch(ai, /45_000/);
 });
 
 test("consultant archive and deletion remain authenticated server operations", async () => {

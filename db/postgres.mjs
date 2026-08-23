@@ -120,6 +120,18 @@ const migrations = [
         ON consultation_attachments (consultation_id, ordinal)`,
     ],
   },
+  {
+    version: 5,
+    statements: [
+      `ALTER TABLE consultation_messages
+        DROP CONSTRAINT IF EXISTS consultation_messages_author_check`,
+      `ALTER TABLE consultation_messages
+        ADD CONSTRAINT consultation_messages_author_check
+        CHECK (author IN ('visitor', 'consultant', 'ai_draft'))`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS consultation_ai_draft_unique
+        ON consultation_messages (consultation_id) WHERE author = 'ai_draft'`,
+    ],
+  },
 ];
 
 function missingDatabaseVariables() {

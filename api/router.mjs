@@ -363,7 +363,10 @@ async function consultantList(request) {
             visitor.ciphertext, visitor.encryption_iv, visitor.authentication_tag,
             answer.ciphertext AS answer_ciphertext,
             answer.encryption_iv AS answer_encryption_iv,
-            answer.authentication_tag AS answer_authentication_tag
+            answer.authentication_tag AS answer_authentication_tag,
+            draft.ciphertext AS draft_ciphertext,
+            draft.encryption_iv AS draft_encryption_iv,
+            draft.authentication_tag AS draft_authentication_tag
      FROM consultations c
      JOIN LATERAL (
        SELECT ciphertext, encryption_iv, authentication_tag
@@ -377,6 +380,12 @@ async function consultantList(request) {
        WHERE consultation_id = c.id AND author = 'consultant'
        ORDER BY created_at DESC LIMIT 1
      ) answer ON true
+     LEFT JOIN LATERAL (
+       SELECT ciphertext, encryption_iv, authentication_tag
+       FROM consultation_messages
+       WHERE consultation_id = c.id AND author = 'ai_draft'
+       ORDER BY created_at DESC LIMIT 1
+     ) draft ON true
      WHERE ($1 = 'archive' AND c.status = 'archived')
         OR ($1 = 'active' AND c.status IN ('question_submitted', 'answered'))
      ORDER BY CASE WHEN c.status = 'question_submitted' THEN 0 ELSE 1 END,
@@ -417,6 +426,11 @@ async function consultantList(request) {
         ciphertext: row.answer_ciphertext,
         encryption_iv: row.answer_encryption_iv,
         authentication_tag: row.answer_authentication_tag,
+      }) : null,
+      aiDraft: row.draft_ciphertext ? decryptMessage(row.id, "ai_draft", {
+        ciphertext: row.draft_ciphertext,
+        encryption_iv: row.draft_encryption_iv,
+        authentication_tag: row.draft_authentication_tag,
       }) : null,
       attachments: attachmentsByConsultation.get(row.id) ?? [],
     })),
@@ -565,12 +579,31 @@ async function consultantAiDraft(request) {
   const consultation = result.rows[0];
   if (!consultation) return json({ error: "not_found" }, 404);
 
+  const existingDraft = await database.query(
+    `SELECT ciphertext, encryption_iv, authentication_tag
+     FROM consultation_messages
+     WHERE consultation_id = $1 AND author = 'ai_draft'
+     ORDER BY created_at DESC LIMIT 1`,
+    [consultation.id],
+  );
+  if (existingDraft.rows[0]) {
+    return json({ draft: decryptMessage(consultation.id, "ai_draft", existingDraft.rows[0]), cached: true });
+  }
+
   const question = decryptMessage(consultation.id, "visitor", consultation);
   try {
     const draft = await createConsultationDraft(question);
-    return json({ draft });
+    const encrypted = encryptMessage(consultation.id, "ai_draft", draft);
+    await database.query(
+      `INSERT INTO consultation_messages
+        (id, consultation_id, author, ciphertext, encryption_iv, authentication_tag)
+       VALUES ($1, $2, 'ai_draft', $3, $4, $5)
+       ON CONFLICT DO NOTHING`,
+      [randomUUID(), consultation.id, encrypted.ciphertext, encrypted.iv, encrypted.authenticationTag],
+    );
+    return json({ draft, cached: false });
   } catch (error) {
-    console.error(`AI draft request failed: ${error?.code ?? "unknown_error"}`);
+    console.error(`AI draft request failed: ${error?.code ?? "unknown_error"}; status=${error?.status ?? "none"}`);
     return json({ error: "ai_unavailable" }, 502);
   }
 }

@@ -11,6 +11,7 @@ type Consultation = {
   archivedAt: string | null;
   question: string;
   answer: string | null;
+  aiDraft: string | null;
   attachments: { id: string; name: string; mimeType: string; size: number }[];
 };
 
@@ -49,7 +50,7 @@ export default function ConsultantCabinet() {
       setSelectedId((current) => items.some((item) => item.id === current) ? current : items[0]?.id ?? null);
       setAnswers((current) => {
         const next = { ...current };
-        for (const item of items) if (next[item.id] === undefined && item.answer) next[item.id] = item.answer;
+        for (const item of items) if (next[item.id] === undefined && (item.answer || item.aiDraft)) next[item.id] = item.answer || item.aiDraft || "";
         return next;
       });
       setCalculationEntries(calculationsResult.entries);
@@ -57,7 +58,29 @@ export default function ConsultantCabinet() {
       setCalculationValue(String((calculationsResult.currentPriceKopecks ?? 10000) / 100));
       setAuthenticated(true);
       window.sessionStorage.setItem("ndfl-consultant-key", key);
-    } catch {
+      const withoutDraft = items.find((item) => item.status === "question_submitted" && !item.aiDraft);
+      if (withoutDraft) {
+        setMessage("Новый вопрос получен. Qwen готовит черновик ответа…");
+        const draftResponse = await fetch("/api/consultant/ai-draft", {
+          method: "POST",
+          headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+          body: JSON.stringify({ consultationId: withoutDraft.id }),
+        });
+        const draftResult = await draftResponse.json();
+        if (!draftResponse.ok || typeof draftResult.draft !== "string") throw new Error("ai_draft_failed");
+        setAnswers((current) => ({ ...current, [withoutDraft.id]: draftResult.draft }));
+        setConsultations((current) => current.map((item) => item.id === withoutDraft.id ? { ...item, aiDraft: draftResult.draft } : item));
+        setSelectedId(withoutDraft.id);
+        setMessage("Список обновлён. Qwen подготовил черновик нового ответа — проверьте его перед отправкой.");
+      } else {
+        setMessage(`Данные обновлены в ${new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}. Новых вопросов без черновика нет.`);
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message === "ai_draft_failed") {
+        setAuthenticated(true);
+        setMessage("Список вопросов обновлён, но Qwen не смог подготовить черновик. Нажмите «Подготовить черновик с ИИ» ещё раз или проверьте AI Gateway.");
+        return;
+      }
       setAuthenticated(false);
       setMessage("Ключ не подошёл или кабинет временно недоступен.");
     } finally {
@@ -215,6 +238,7 @@ export default function ConsultantCabinet() {
       const result = await response.json();
       if (!response.ok || typeof result.draft !== "string") throw new Error("draft_failed");
       setAnswers((current) => ({ ...current, [consultationId]: result.draft }));
+      setConsultations((current) => current.map((item) => item.id === consultationId ? { ...item, aiDraft: result.draft } : item));
       setMessage("Черновик подготовлен без Markdown-разметки. Проверьте факты перед отправкой.");
     } catch { setMessage("Не удалось подготовить черновик. Проверьте ключ AI Gateway, баланс Timeweb и повторите попытку."); }
     finally { setDraftingId(null); }
@@ -242,7 +266,7 @@ export default function ConsultantCabinet() {
         </section>
       ) : (
         <section className="cabinet-workspace">
-          <div className="cabinet-title"><div><span className="mini-label">Рабочее место</span><h1>{view === "archive" ? "Архив консультаций" : "Вопросы посетителей"}</h1></div><button className="cabinet-refresh" disabled={loading} onClick={() => void load(accessKey, view)}>Обновить</button></div>
+          <div className="cabinet-title"><div><span className="mini-label">Рабочее место</span><h1>{view === "archive" ? "Архив консультаций" : "Вопросы посетителей"}</h1></div><button className="cabinet-refresh" disabled={loading} onClick={() => void load(accessKey, view)}>{loading ? "Обновляем…" : "Обновить"}</button></div>
           {message && <p className="cabinet-message success" role="status">{message}</p>}
 
           <section className="consultation-calculator" aria-labelledby="calculator-title">
