@@ -119,4 +119,9 @@ test("renders the consultant cabinet", async () => {
   assert.match(page, /Тариф:/);
   assert.match(page, /Срочный тариф/);
   assert.match(page, /\/api\/consultant\/settings/);
+  assert.match(page, /\/api\/consultant\/pending-summary/);
+  assert.match(page, /Включить звук/);
+  assert.match(page, /Поступил новый вопрос/);
+  assert.match(page, /new Notification/);
+  assert.match(page, /AudioContext/);
 });

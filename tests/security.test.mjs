@@ -80,6 +80,15 @@ test("consultant calculations require the consultant key", async () => {
   assert.match(router, /consultantAuthorized\(request\)/);
 });
 
+test("new-question polling is authenticated and does not return question text", async () => {
+  const router = await readFile(new URL("../api/router.mjs", import.meta.url), "utf8");
+  assert.match(router, /consultantPendingSummary/);
+  assert.match(router, /GET \/api\/consultant\/pending-summary/);
+  assert.match(router, /allowRequest\("consultant-alerts"/);
+  assert.match(router, /SELECT id, created_at\s+FROM consultations\s+WHERE status = 'question_submitted'/);
+  assert.match(router, /consultantAuthorized\(request\)/);
+});
+
 test("visitor attachment uploads are disabled while prior files remain consultant-only", async () => {
   const router = await readFile(new URL("../api/router.mjs", import.meta.url), "utf8");
   assert.match(router, /attachmentsDisabled/);

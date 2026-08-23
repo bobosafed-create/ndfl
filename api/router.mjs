@@ -445,6 +445,23 @@ async function consultantList(request) {
   });
 }
 
+async function consultantPendingSummary(request) {
+  if (!allowRequest("consultant-alerts", request, 240) || !consultantAuthorized(request)) {
+    return json({ error: "unauthorized" }, 401);
+  }
+  const database = getDatabasePool();
+  const result = await database.query(
+    `SELECT id, created_at
+     FROM consultations
+     WHERE status = 'question_submitted'
+     ORDER BY created_at DESC
+     LIMIT 100`,
+  );
+  return json({
+    pending: result.rows.map((row) => ({ id: row.id, createdAt: row.created_at })),
+  });
+}
+
 async function consultantAttachment(request) {
   if (!allowRequest("consultant-attachment", request, 40) || !consultantAuthorized(request)) return json({ error: "unauthorized" }, 401);
   const id = new URL(request.url).searchParams.get("id");
@@ -714,6 +731,7 @@ export async function routeApi(request) {
     if (route === "POST /api/consultations/attachments") return attachmentsDisabled();
     if (route === "POST /api/consultations/answer") return openAnswer(request);
     if (route === "GET /api/consultant/consultations") return consultantList(request);
+    if (route === "GET /api/consultant/pending-summary") return consultantPendingSummary(request);
     if (route === "GET /api/consultant/attachments") return consultantAttachment(request);
     if (route === "POST /api/consultant/archive") return consultantArchive(request);
     if (route === "DELETE /api/consultant/consultations") return consultantDelete(request);

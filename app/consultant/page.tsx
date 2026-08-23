@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 type Consultation = {
@@ -18,6 +18,7 @@ type Consultation = {
 
 type CalculationEntry = { id: string; amountKopecks: number; note: string; createdAt: string };
 type CabinetView = "active" | "archive";
+type IncomingAlert = { id: string; count: number };
 
 export default function ConsultantCabinet() {
   const [accessKey, setAccessKey] = useState("");
@@ -34,6 +35,31 @@ export default function ConsultantCabinet() {
   const [calculationTotal, setCalculationTotal] = useState(0);
   const [urgentTariffAvailable, setUrgentTariffAvailable] = useState(true);
   const [draftingId, setDraftingId] = useState<string | null>(null);
+  const [alertsEnabled, setAlertsEnabled] = useState(false);
+  const [incomingAlert, setIncomingAlert] = useState<IncomingAlert | null>(null);
+  const knownConsultationIds = useRef<Set<string>>(new Set());
+  const audioContextRef = useRef<AudioContext | null>(null);
+
+  const playAlertSound = useCallback(() => {
+    try {
+      const AudioContextClass = window.AudioContext;
+      const context = audioContextRef.current ?? new AudioContextClass();
+      audioContextRef.current = context;
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(880, context.currentTime);
+      gain.gain.setValueAtTime(0.0001, context.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.2, context.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.42);
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.start();
+      oscillator.stop(context.currentTime + 0.43);
+    } catch {
+      // Если браузер запрещает звук, визуальное напоминание всё равно останется.
+    }
+  }, []);
 
   async function load(key: string, targetView: CabinetView = view) {
     setLoading(true);
@@ -47,6 +73,7 @@ export default function ConsultantCabinet() {
       if (!consultationsResponse.ok || !calculationsResponse.ok) throw new Error("unauthorized");
       const [consultationsResult, calculationsResult] = await Promise.all([consultationsResponse.json(), calculationsResponse.json()]);
       const items: Consultation[] = consultationsResult.consultations;
+      for (const item of items) knownConsultationIds.current.add(item.id);
       setConsultations(items);
       setCounts(consultationsResult.counts ?? { active: items.length, archive: 0 });
       setSelectedId((current) => items.some((item) => item.id === current) ? current : items[0]?.id ?? null);
@@ -100,6 +127,68 @@ export default function ConsultantCabinet() {
   // Восстановление выполняется один раз при открытии вкладки.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!authenticated || !accessKey) return;
+    let cancelled = false;
+    async function checkForNewQuestions() {
+      try {
+        const response = await fetch("/api/consultant/pending-summary", {
+          headers: { authorization: `Bearer ${accessKey}` },
+          cache: "no-store",
+        });
+        if (!response.ok || cancelled) return;
+        const result = await response.json();
+        const pending: { id: string; createdAt: string }[] = Array.isArray(result.pending) ? result.pending : [];
+        const fresh = pending.filter((item) => !knownConsultationIds.current.has(item.id));
+        for (const item of pending) knownConsultationIds.current.add(item.id);
+        if (fresh.length === 0 || cancelled) return;
+
+        setIncomingAlert({ id: fresh[0].id, count: fresh.length });
+        if (alertsEnabled) {
+          playAlertSound();
+          if ("Notification" in window && Notification.permission === "granted") {
+            const notification = new Notification("Новый вопрос по НДФЛ", {
+              body: fresh.length === 1 ? "В кабинете появился новый вопрос." : `Новых вопросов: ${fresh.length}.`,
+              icon: "/favicon.svg",
+              tag: "ndfl-new-question",
+            });
+            notification.onclick = () => { window.focus(); notification.close(); };
+          }
+        }
+      } catch {
+        // Кратковременная ошибка сети не мешает следующей проверке.
+      }
+    }
+    const timer = window.setInterval(() => void checkForNewQuestions(), 20_000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [accessKey, alertsEnabled, authenticated, playAlertSound]);
+
+  async function toggleAlerts() {
+    if (alertsEnabled) {
+      setAlertsEnabled(false);
+      setMessage("Звуковой сигнал выключен. Окно о новом вопросе останется включённым.");
+      return;
+    }
+    playAlertSound();
+    let permission: NotificationPermission | "unsupported" = "unsupported";
+    if ("Notification" in window) {
+      permission = Notification.permission;
+      if (permission === "default") permission = await Notification.requestPermission();
+    }
+    setAlertsEnabled(true);
+    setMessage(permission === "granted"
+      ? "Оповещения включены: при новом вопросе прозвучит сигнал и появится системное уведомление."
+      : "Звуковой сигнал и окно в кабинете включены. Системные уведомления браузера не разрешены.");
+  }
+
+  async function openIncomingAlert() {
+    const consultationId = incomingAlert?.id ?? null;
+    setIncomingAlert(null);
+    setView("active");
+    await load(accessKey, "active");
+    if (consultationId) setSelectedId(consultationId);
+  }
 
   async function switchView(targetView: CabinetView) {
     setView(targetView);
@@ -174,7 +263,7 @@ export default function ConsultantCabinet() {
 
   function signOut() {
     window.sessionStorage.removeItem("ndfl-consultant-key");
-    setAuthenticated(false); setAccessKey(""); setConsultations([]); setCalculationEntries([]); setCalculationTotal(0);
+    setAuthenticated(false); setAccessKey(""); setConsultations([]); setCalculationEntries([]); setCalculationTotal(0); setAlertsEnabled(false); setIncomingAlert(null);
   }
 
   function pressCalculator(key: string) {
@@ -287,7 +376,7 @@ export default function ConsultantCabinet() {
         </section>
       ) : (
         <section className="cabinet-workspace">
-          <div className="cabinet-title"><div><span className="mini-label">Рабочее место</span><h1>{view === "archive" ? "Архив консультаций" : "Вопросы посетителей"}</h1></div><button className="cabinet-refresh" disabled={loading} onClick={() => void load(accessKey, view)}>{loading ? "Обновляем…" : "Обновить"}</button></div>
+          <div className="cabinet-title"><div><span className="mini-label">Рабочее место</span><h1>{view === "archive" ? "Архив консультаций" : "Вопросы посетителей"}</h1></div><div className="cabinet-title-actions"><button className={`cabinet-alert-toggle ${alertsEnabled ? "enabled" : ""}`} type="button" onClick={() => void toggleAlerts()}>{alertsEnabled ? "🔔 Оповещения включены" : "🔕 Включить звук"}</button><button className="cabinet-refresh" disabled={loading} onClick={() => void load(accessKey, view)}>{loading ? "Обновляем…" : "Обновить"}</button></div></div>
           {message && <p className="cabinet-message success" role="status">{message}</p>}
 
           <section className="consultation-calculator" aria-labelledby="calculator-title">
@@ -325,6 +414,7 @@ export default function ConsultantCabinet() {
               <footer className="consultation-editor-actions no-print"><button className="print-button" type="button" onClick={() => window.print()}>Печать</button>{selected.status === "archived" ? <button className="restore-button" type="button" disabled={loading} onClick={() => void setArchived(selected.id, false)}>Вернуть из архива</button> : selected.status === "answered" ? <button className="archive-button" type="button" disabled={loading} onClick={() => void setArchived(selected.id, true)}>В архив</button> : null}<button className="delete-button" type="button" disabled={loading} onClick={() => void deleteConsultation(selected.id)}>Удалить вопрос и ответ</button>{selected.status !== "archived" && <><span>{selectedAnswer.length} / 5750</span><button className="action-button" disabled={selectedAnswer.trim().length < 10 || loading} onClick={() => void saveAnswer(selected.id)}>Отправить в сейф</button></>}</footer>
             </article>
           )}
+          {incomingAlert && <aside className="incoming-alert" role="alertdialog" aria-live="assertive" aria-labelledby="incoming-alert-title"><button className="incoming-alert-close" type="button" aria-label="Закрыть напоминание" onClick={() => setIncomingAlert(null)}>×</button><span className="incoming-alert-icon" aria-hidden="true">!</span><small>Новое обращение</small><h2 id="incoming-alert-title">{incomingAlert.count === 1 ? "Поступил новый вопрос" : `Поступили новые вопросы: ${incomingAlert.count}`}</h2><p>Откройте обращение и проверьте подготовленный черновик ответа.</p><div><button className="action-button" type="button" onClick={() => void openIncomingAlert()}>Открыть вопрос</button><button className="incoming-alert-later" type="button" onClick={() => setIncomingAlert(null)}>Позже</button></div></aside>}
         </section>
       )}
     </main>
