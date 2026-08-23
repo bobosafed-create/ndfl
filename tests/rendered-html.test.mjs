@@ -45,6 +45,10 @@ test("keeps consultation codes four digits and uses the protected payment flow",
   assert.match(page, /ndfl-active-consultation/);
   assert.doesNotMatch(page, /Демонстрационный платёж/);
   assert.match(page, /окошко закроется через/);
+  assert.match(page, /paginateAnswer/);
+  assert.match(page, /answer-carousel/);
+  assert.match(page, /Страница <b>/);
+  assert.match(page, /Далее →/);
 });
 
 test("renders the consultant cabinet", async () => {

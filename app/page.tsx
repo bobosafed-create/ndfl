@@ -4,6 +4,36 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 type Stage = "room" | "payment" | "question" | "waiting" | "answer";
 
+function paginateAnswer(text: string, pageSize = 1050) {
+  const paragraphs = text.replace(/\r\n/g, "\n").split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
+  const pieces: string[] = [];
+  for (const paragraph of paragraphs) {
+    if (paragraph.length <= pageSize) { pieces.push(paragraph); continue; }
+    const sentences = paragraph.match(/[^.!?\n]+[.!?]+|[^.!?\n]+$/g) ?? [paragraph];
+    let piece = "";
+    for (const sentence of sentences) {
+      const clean = sentence.trim();
+      if (`${piece} ${clean}`.trim().length <= pageSize) { piece = `${piece} ${clean}`.trim(); continue; }
+      if (piece) pieces.push(piece);
+      if (clean.length <= pageSize) { piece = clean; continue; }
+      const words = clean.split(/\s+/);
+      piece = "";
+      for (const word of words) {
+        if (`${piece} ${word}`.trim().length > pageSize && piece) { pieces.push(piece); piece = word; }
+        else piece = `${piece} ${word}`.trim();
+      }
+    }
+    if (piece) pieces.push(piece);
+  }
+  const pages: string[] = [];
+  for (const piece of pieces) {
+    const candidate = pages.length ? `${pages.at(-1)}\n\n${piece}` : piece;
+    if (pages.length && candidate.length <= pageSize) pages[pages.length - 1] = candidate;
+    else pages.push(piece);
+  }
+  return pages.length ? pages : [text];
+}
+
 export default function Home() {
   const [stage, setStage] = useState<Stage>("room");
   const [question, setQuestion] = useState("");
@@ -18,6 +48,7 @@ export default function Home() {
   const [browserToken, setBrowserToken] = useState("");
   const [answerDueAt, setAnswerDueAt] = useState<string | null>(null);
   const [answer, setAnswer] = useState("");
+  const [answerPage, setAnswerPage] = useState(0);
   const [busy, setBusy] = useState(false);
   const [paymentMessage, setPaymentMessage] = useState("");
   const [priceKopecks, setPriceKopecks] = useState(10000);
@@ -26,6 +57,7 @@ export default function Home() {
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
 
   const priceLabel = useMemo(() => `${(priceKopecks / 100).toLocaleString("ru-RU")} ₽`, [priceKopecks]);
+  const answerPages = useMemo(() => paginateAnswer(answer), [answer]);
 
   const deadline = useMemo(() => {
     if (!answerDueAt) return "в течение часа";
@@ -205,6 +237,7 @@ export default function Home() {
         return;
       }
       setAnswer(result.answer);
+      setAnswerPage(0);
       setSafeMessage("");
       setStage("answer");
     } finally {
@@ -225,6 +258,7 @@ export default function Home() {
     setConsultationId("");
     setBrowserToken("");
     setAnswer("");
+    setAnswerPage(0);
     setAnswerDueAt(null);
   }
 
@@ -284,7 +318,7 @@ export default function Home() {
 
           {stage === "waiting" && !codeNoticeVisible && answerReady && <div className="safe-entry-panel"><span className="safe-entry-kicker">Ответ готов</span><h3>Откройте сейф</h3><p>Введите сохранённый персональный код консультации.</p><label htmlFor="safe-code">Код от сейфа</label><div className="code-entry"><input id="safe-code" inputMode="numeric" autoComplete="one-time-code" maxLength={4} value={safeCode} onChange={(event) => setSafeCode(event.target.value.replace(/\D/g, ""))} placeholder="••••" aria-label="Четырёхзначный код консультации"/><button onClick={openSafe}>Открыть</button></div>{safeMessage && <p className="safe-message" role="status">{safeMessage}</p>}</div>}
 
-          {stage === "answer" && <div className="answer-layer"><article className="answer-paper"><header><span>Ответ консультанта</span><strong>Консультация № {displayCode(consultationCode)}</strong></header><div className="consultant-stamp">КОНСУЛЬТАНТ<br/><b>ОТВЕТИЛ</b></div><h3>Ответ готов</h3><p className="consultation-answer">{answer}</p><div className="answer-note"><b>Важно:</b> ответ относится к описанной ситуации. Если существенные обстоятельства не были указаны, вывод может измениться.</div><button className="action-button" onClick={resetConsultation}>Завершить консультацию</button></article></div>}
+          {stage === "answer" && <div className="answer-layer"><section className="answer-carousel" aria-label={`Ответ консультанта, страница ${answerPage + 1} из ${answerPages.length}`}><div className="answer-track" style={{ transform: `translateX(-${answerPage * 100}%)` }}>{answerPages.map((page, index) => <article className="answer-paper" key={index} aria-hidden={index !== answerPage}><header><span>Ответ консультанта</span><strong>Консультация № {displayCode(consultationCode)}</strong></header><div className="consultant-stamp">КОНСУЛЬТАНТ<br/><b>ОТВЕТИЛ</b></div><h3>{index === 0 ? "Ответ готов" : "Продолжение ответа"}</h3><p className="consultation-answer">{page}</p>{index === answerPages.length - 1 && <div className="answer-note"><b>Важно:</b> ответ относится к описанной ситуации. Если существенные обстоятельства не были указаны, вывод может измениться.</div>}</article>)}</div><div className="answer-pagination"><button type="button" disabled={answerPage === 0} onClick={() => setAnswerPage((page) => Math.max(0, page - 1))}>← Назад</button><span>Страница <b>{answerPage + 1}</b> из {answerPages.length}</span>{answerPage < answerPages.length - 1 ? <button type="button" onClick={() => setAnswerPage((page) => Math.min(answerPages.length - 1, page + 1))}>Далее →</button> : <button className="finish-answer" type="button" onClick={resetConsultation}>Завершить</button>}</div><div className="answer-dots" aria-hidden="true">{answerPages.map((_, index) => <i className={index === answerPage ? "active" : ""} key={index} />)}</div></section></div>}
         </div>
         <p className="demo-note">Вопрос и ответ хранятся в зашифрованном виде. Для открытия сейфа нужны этот браузер и ваш четырёхзначный код.</p>
       </section>
