@@ -56,6 +56,8 @@ test("keeps consultation codes four digits and uses the protected payment flow",
 
 test("legal documents describe the anonymous mode without hiding technical processing", async () => {
   const legal = await readFile(new URL("../app/legal/page.tsx", import.meta.url), "utf8");
+  assert.match(legal, /<a className="cabinet-back" href="\/#room" aria-label="Вернуться на сайт">/);
+  assert.doesNotMatch(legal, /next\/link/);
   assert.match(legal, /не идентифицирует и не персонализирует Посетителя/);
   assert.match(legal, /Функция загрузки файлов и документов отключена/);
   assert.match(legal, /не означает полного отсутствия технической обработки/);

@@ -1,10 +1,8 @@
-import Link from "next/link";
-
 const updated = "23 августа 2026 года";
 
 export default function LegalPage() {
   return <main className="legal-page">
-    <header className="legal-header"><Link className="cabinet-back" href="/#room"><span>←</span><b>На сайт</b></Link><div><span className="mini-label">Правовая информация</span><h1>Документы и контакты</h1><p>Редакция от {updated}</p></div></header>
+    <header className="legal-header"><a className="cabinet-back" href="/#room" aria-label="Вернуться на сайт"><span>←</span><b>На сайт</b></a><div><span className="mini-label">Правовая информация</span><h1>Документы и контакты</h1><p>Редакция от {updated}</p></div></header>
     <nav className="legal-nav" aria-label="Разделы"><a href="#offer">Оферта</a><a href="#privacy">Конфиденциальность</a><a href="#refunds">Возврат денег</a><a href="#contacts">Контакты</a></nav>
     <article id="offer" className="legal-card"><span className="mini-label">Документ 1</span><h2>Публичная оферта</h2>
       <p>Настоящий документ является предложением самозанятого Холодного Александра Владимировича, ИНН 231500470459 (далее — «Исполнитель»), заключить договор оказания информационно-консультационной услуги по вопросам НДФЛ.</p>
