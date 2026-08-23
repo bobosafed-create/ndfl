@@ -52,8 +52,6 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [paymentMessage, setPaymentMessage] = useState("");
   const [priceKopecks, setPriceKopecks] = useState(10000);
-  const [attachments, setAttachments] = useState<File[]>([]);
-  const [uploadedFiles, setUploadedFiles] = useState<Set<string>>(new Set());
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
 
   const priceLabel = useMemo(() => `${(priceKopecks / 100).toLocaleString("ru-RU")} ₽`, [priceKopecks]);
@@ -178,20 +176,6 @@ export default function Home() {
     if (question.trim().length < 10 || busy || !privacyAccepted) return;
     setBusy(true);
     try {
-      for (const file of attachments) {
-        const key = `${file.name}:${file.size}:${file.lastModified}`;
-        if (uploadedFiles.has(key)) continue;
-        const form = new FormData();
-        form.set("consultationId", consultationId); form.set("browserToken", browserToken); form.set("file", file);
-        const upload = await fetch("/api/consultations/attachments", { method: "POST", body: form });
-        if (!upload.ok) {
-          const error = await upload.json().catch(() => ({}));
-          if (error.error === "file_too_large") throw new Error("file_too_large");
-          if (error.error === "unsupported_attachment") throw new Error("unsupported_attachment");
-          throw new Error("upload_failed");
-        }
-        setUploadedFiles((current) => new Set(current).add(key));
-      }
       const response = await fetch("/api/consultations/question", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -205,13 +189,8 @@ export default function Home() {
       setAnswerReady(false);
       setStage("waiting");
       setSafeMessage("");
-    } catch (error) {
-      const messages: Record<string, string> = {
-        file_too_large: "Один из файлов больше 5 МБ.",
-        unsupported_attachment: "Допустимы PDF, DOC, DOCX, JPG, PNG и WEBP.",
-        upload_failed: "Не удалось загрузить документ. Проверьте соединение и повторите попытку.",
-      };
-      setSafeMessage(messages[error instanceof Error ? error.message : ""] ?? "Не удалось сохранить вопрос. Проверьте соединение и повторите попытку.");
+    } catch {
+      setSafeMessage("Не удалось сохранить вопрос. Проверьте соединение и повторите попытку.");
     } finally {
       setBusy(false);
     }
@@ -310,7 +289,7 @@ export default function Home() {
 
           {stage === "payment" && <div className="modal-backdrop"><section className="payment-card" role="dialog" aria-modal="true" aria-labelledby="payment-title"><button className="close" onClick={() => setStage("room")} aria-label="Закрыть">×</button><span className="payment-icon">₽</span><small>Защищённая оплата через ЮKassa</small><h3 id="payment-title">Консультация по НДФЛ</h3><div className="price-row"><span>К оплате</span><strong>{priceLabel}</strong></div><button className="action-button" disabled={busy || Boolean(paymentMessage && consultationId)} onClick={startPayment}>{busy ? "Открываем оплату…" : consultationId ? "Проверяем платёж…" : `Оплатить ${priceLabel}`}</button>{paymentMessage && <p className="payment-error" role="status">{paymentMessage}</p>}<p>Оплата проходит на странице ЮKassa. Сайт не получает и не хранит данные банковской карты.</p></section></div>}
 
-          {stage === "question" && <div className="desk-layer"><article className="question-paper"><header><span>Бланк вопроса</span><strong>Номер консультации (код) — <b>{displayCode(consultationCode)}</b></strong></header>{tipVisible && <div className="timed-tip"><b>Подсказка</b> Опишите кратко свой вопрос. Ответ будет дан в течение часа и появится в сейфе справа. По возможности скройте ФИО, адрес, телефон, email и номера документов.</div>}<label htmlFor="question">Ваш вопрос консультанту</label><textarea id="question" value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={1200} placeholder="Например: в 2025 году я продал квартиру. Нужно ли подавать декларацию и какие документы понадобятся?"/><label className="attachment-picker" htmlFor="attachments">📎 Добавить документы или сканы <small>PDF, DOC, DOCX, JPG, PNG, WEBP · до 5 файлов по 5 МБ</small></label><input className="visually-hidden" id="attachments" type="file" multiple accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp" onChange={(event) => { const files = Array.from(event.target.files ?? []).slice(0, 5); setAttachments(files); setUploadedFiles(new Set()); }} />{attachments.length > 0 && <div className="selected-files">{attachments.map((file) => <span key={`${file.name}:${file.size}`}>✓ {file.name} <small>{(file.size / 1024).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} КБ</small></span>)}</div>}<label className="privacy-check"><input type="checkbox" checked={privacyAccepted} onChange={(event) => setPrivacyAccepted(event.target.checked)} /><span>Я ознакомился(ась) с <a href="/legal#privacy" target="_blank">условиями конфиденциальности</a> и удалил(а) из документов лишние персональные данные.</span></label><div className="paper-footer"><span>{question.length} / 1200</span><button className="action-button" disabled={question.trim().length < 10 || busy || !privacyAccepted} onClick={saveQuestion}>{busy ? "Загружаем и сохраняем…" : "Сохранить документ"} <b>✓</b></button></div>{safeMessage && <p className="form-message" role="status">{safeMessage}</p>}</article></div>}
+          {stage === "question" && <div className="desk-layer"><article className="question-paper"><header><span>Бланк вопроса</span><strong>Номер консультации (код) — <b>{displayCode(consultationCode)}</b></strong></header>{tipVisible && <div className="timed-tip"><b>Подсказка</b> Опишите кратко свой вопрос. Ответ будет дан в течение часа и появится в сейфе справа. Не указывайте ФИО, адрес, телефон, e-mail, номера документов и другие персональные данные.</div>}<label htmlFor="question">Ваш вопрос консультанту</label><textarea id="question" value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={1200} placeholder="Например: в 2025 году я продал квартиру. Нужно ли подавать декларацию и какие документы понадобятся?"/><label className="privacy-check"><input type="checkbox" checked={privacyAccepted} onChange={(event) => setPrivacyAccepted(event.target.checked)} /><span>Я ознакомился(ась) с <a href="/legal#privacy" target="_blank">условиями конфиденциальности</a> и подтверждаю, что не указываю в вопросе персональные данные свои или третьих лиц.</span></label><div className="paper-footer"><span>{question.length} / 1200</span><button className="action-button" disabled={question.trim().length < 10 || busy || !privacyAccepted} onClick={saveQuestion}>{busy ? "Сохраняем…" : "Сохранить документ"} <b>✓</b></button></div>{safeMessage && <p className="form-message" role="status">{safeMessage}</p>}</article></div>}
 
           {stage === "waiting" && codeNoticeVisible && <div className="waiting-panel code-notice-panel"><span className="seal">✓</span><h3>Вопрос сохранён</h3><p>Ответ будет подготовлен не позднее <strong>{deadline}</strong>.</p><div className="code-reminder"><span>Ваш персональный код</span><strong>{displayCode(consultationCode)}</strong></div><div className="privacy-countdown"><b>Запомните код!</b><span>Для конфиденциальности окошко закроется через <strong>{codeNoticeSeconds}</strong> сек.</span></div></div>}
 

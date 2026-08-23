@@ -60,17 +60,13 @@ test("consultant calculations require the consultant key", async () => {
   assert.match(router, /consultantAuthorized\(request\)/);
 });
 
-test("attachments are encrypted, type-checked and consultant-only", async () => {
+test("visitor attachment uploads are disabled while prior files remain consultant-only", async () => {
   const router = await readFile(new URL("../api/router.mjs", import.meta.url), "utf8");
-  assert.match(router, /detectAttachment/);
-  assert.match(router, /encryptBinary/);
+  assert.match(router, /attachmentsDisabled/);
+  assert.match(router, /attachments_disabled/);
+  assert.doesNotMatch(router, /async function uploadAttachment/);
   assert.match(router, /consultantAttachment/);
   assert.match(router, /consultantAuthorized\(request\)/);
-  const encrypted = security.encryptBinary("4b593eac-8d19-4a28-9c44-8c58d151592c", "file-id", Buffer.from("document"));
-  const decrypted = security.decryptBinary("4b593eac-8d19-4a28-9c44-8c58d151592c", "file-id", {
-    ciphertext: encrypted.ciphertext, encryption_iv: encrypted.iv, authentication_tag: encrypted.authenticationTag,
-  });
-  assert.equal(decrypted.toString(), "document");
 });
 
 test("AI drafts are server-side, authenticated and never sent directly to the visitor", async () => {

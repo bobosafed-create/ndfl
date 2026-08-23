@@ -5,7 +5,6 @@ import {
   consultantKeyMatches,
   decryptBinary,
   decryptMessage,
-  encryptBinary,
   encryptMessage,
   randomToken,
 } from "../lib/security.mjs";
@@ -74,18 +73,6 @@ async function publicPrice() {
     "SELECT consultation_price_kopecks FROM site_settings WHERE singleton = true",
   );
   return json({ amountKopecks: result.rows[0]?.consultation_price_kopecks ?? 10000 });
-}
-
-function detectAttachment(buffer, filename) {
-  const extension = String(filename ?? "").split(".").pop()?.toLowerCase();
-  const starts = (...bytes) => bytes.every((byte, index) => buffer[index] === byte);
-  if (extension === "pdf" && buffer.subarray(0, 5).toString("ascii") === "%PDF-") return { extension, mimeType: "application/pdf" };
-  if (extension === "doc" && starts(0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1)) return { extension, mimeType: "application/msword" };
-  if (extension === "docx" && starts(0x50, 0x4b, 0x03, 0x04)) return { extension, mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" };
-  if (["jpg", "jpeg"].includes(extension) && starts(0xff, 0xd8, 0xff)) return { extension: "jpg", mimeType: "image/jpeg" };
-  if (extension === "png" && starts(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return { extension, mimeType: "image/png" };
-  if (extension === "webp" && buffer.subarray(0, 4).toString("ascii") === "RIFF" && buffer.subarray(8, 12).toString("ascii") === "WEBP") return { extension, mimeType: "image/webp" };
-  return null;
 }
 
 async function createPayment(request) {
@@ -269,44 +256,8 @@ async function saveQuestion(request) {
   }
 }
 
-async function uploadAttachment(request) {
-  if (!allowRequest("attachment", request, 15, 10 * 60_000)) return json({ error: "too_many_requests" }, 429);
-  const length = Number(request.headers.get("content-length") ?? 0);
-  if (!Number.isFinite(length) || length <= 0 || length > 5_800_000) return json({ error: "file_too_large" }, 413);
-  const form = await request.formData();
-  const consultationId = form.get("consultationId");
-  const browserToken = form.get("browserToken");
-  const file = form.get("file");
-  if (!validUuid(consultationId) || typeof browserToken !== "string" || !(file instanceof File)) return json({ error: "invalid_attachment" }, 400);
-  if (file.size < 1 || file.size > 5 * 1024 * 1024) return json({ error: "file_too_large" }, 413);
-  const bytes = Buffer.from(await file.arrayBuffer());
-  const detected = detectAttachment(bytes, file.name);
-  if (!detected) return json({ error: "unsupported_attachment" }, 415);
-  const database = getDatabasePool();
-  const consultation = await authenticateConsultation(database, consultationId, browserToken);
-  if (!consultation) return json({ error: "not_found" }, 404);
-  if (consultation.status !== "paid") return json({ error: "question_already_saved" }, 409);
-  const client = await database.connect();
-  try {
-    await client.query("BEGIN");
-    await client.query("SELECT id FROM consultations WHERE id = $1 FOR UPDATE", [consultationId]);
-    const count = await client.query("SELECT count(*)::integer AS count FROM consultation_attachments WHERE consultation_id = $1", [consultationId]);
-    const ordinal = count.rows[0].count + 1;
-    if (ordinal > 5) { await client.query("ROLLBACK"); return json({ error: "too_many_attachments" }, 409); }
-    const attachmentId = randomUUID();
-    const encrypted = encryptBinary(consultationId, attachmentId, bytes);
-    await client.query(
-      `INSERT INTO consultation_attachments
-        (id, consultation_id, ordinal, extension, mime_type, size_bytes, ciphertext, encryption_iv, authentication_tag)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [attachmentId, consultationId, ordinal, detected.extension, detected.mimeType, file.size, encrypted.ciphertext, encrypted.iv, encrypted.authenticationTag],
-    );
-    await client.query("COMMIT");
-    return json({ saved: true, attachment: { id: attachmentId, name: `Документ ${ordinal}.${detected.extension}`, size: file.size } }, 201);
-  } catch (error) {
-    await client.query("ROLLBACK").catch(() => {});
-    throw error;
-  } finally { client.release(); }
+function attachmentsDisabled() {
+  return json({ error: "attachments_disabled" }, 410);
 }
 
 async function openAnswer(request) {
@@ -684,7 +635,7 @@ export async function routeApi(request) {
     if (route === "POST /api/payments/create") return createPayment(request);
     if (route === "POST /api/consultations/status") return consultationStatus(request);
     if (route === "POST /api/consultations/question") return saveQuestion(request);
-    if (route === "POST /api/consultations/attachments") return uploadAttachment(request);
+    if (route === "POST /api/consultations/attachments") return attachmentsDisabled();
     if (route === "POST /api/consultations/answer") return openAnswer(request);
     if (route === "GET /api/consultant/consultations") return consultantList(request);
     if (route === "GET /api/consultant/attachments") return consultantAttachment(request);

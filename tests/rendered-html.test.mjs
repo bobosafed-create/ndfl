@@ -49,6 +49,17 @@ test("keeps consultation codes four digits and uses the protected payment flow",
   assert.match(page, /answer-carousel/);
   assert.match(page, /Страница <b>/);
   assert.match(page, /Далее →/);
+  assert.doesNotMatch(page, /type="file"/);
+  assert.doesNotMatch(page, /\/api\/consultations\/attachments/);
+  assert.match(page, /не указываю в вопросе персональные данные/);
+});
+
+test("legal documents describe the anonymous mode without hiding technical processing", async () => {
+  const legal = await readFile(new URL("../app/legal/page.tsx", import.meta.url), "utf8");
+  assert.match(legal, /не идентифицирует и не персонализирует Посетителя/);
+  assert.match(legal, /Функция загрузки файлов и документов отключена/);
+  assert.match(legal, /не означает полного отсутствия технической обработки/);
+  assert.match(legal, /IP-адрес и время запросов/);
 });
 
 test("renders the consultant cabinet", async () => {
