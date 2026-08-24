@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { reachMetrikaGoal } from "../lib/metrika";
 
 type Stage = "room" | "payment" | "question" | "waiting" | "answer";
 type Tariff = { code: string; name: string; description: string; amountKopecks: number; deadlineMinutes: number; recommended?: boolean; available?: boolean };
@@ -92,6 +93,15 @@ export default function Home() {
     const result = await response.json();
     setAnswerDueAt(result.answerDueAt ?? null);
     if (result.status === "paid") {
+      const purchaseGoalKey = `ndfl-metrika-purchase-${id}`;
+      if (!window.localStorage.getItem(purchaseGoalKey)) {
+        reachMetrikaGoal("purchase", {
+          order_price: Number(result.tariff?.amountKopecks ?? 0) / 100,
+          currency: "RUB",
+          tariff: result.tariff?.code ?? "consultation-default",
+        });
+        window.localStorage.setItem(purchaseGoalKey, "1");
+      }
       setPaymentMessage("");
       setSelectedTariffCode("");
       setStage("question");
@@ -162,6 +172,11 @@ export default function Home() {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "payment_failed");
+      reachMetrikaGoal("payment_started", {
+        order_price: Number(result.amountKopecks ?? 0) / 100,
+        currency: "RUB",
+        tariff: (result.tariff?.code ?? selectedTariffCode) || "consultation-default",
+      });
       window.localStorage.setItem("ndfl-active-consultation", JSON.stringify({
         id: result.consultationId,
         token: result.browserToken,
