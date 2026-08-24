@@ -75,6 +75,15 @@ test("keeps consultation codes four digits and uses the protected payment flow",
   assert.match(page, /Срок будет указан после оплаты/);
   assert.match(page, /body: JSON\.stringify\(\{ tariffCode: selectedTariffCode \|\| null \}\)/);
   assert.match(page, /setSelectedTariffCode\(""\)/);
+  assert.match(page, /Выключите VPN, если он включён/);
+  assert.match(page, /VPN выключен — перейти к оплате/);
+  assert.match(page, /Скачать ответ/);
+  assert.match(page, /Печать \/ PDF/);
+  assert.match(page, /Отзывы и предложения посетителей/);
+  assert.match(page, /Отправить на проверку/);
+  assert.match(page, /\/api\/feedback/);
+  assert.match(page, /\/api\/visits/);
+  assert.match(page, /\/api\/consultant\/visitor-stats/);
 });
 
 test("sets the selected tariff deadline when the visitor saves a question", async () => {
@@ -126,4 +135,7 @@ test("renders the consultant cabinet", async () => {
   assert.match(page, /Оповещения по НДФЛ включены/);
   assert.match(page, /пробное системное уведомление Windows/);
   assert.match(page, /AudioContext/);
+  assert.match(page, /Отзывы и предложения/);
+  assert.match(page, /Опубликовать/);
+  assert.match(page, /\/api\/consultant\/feedback/);
 });

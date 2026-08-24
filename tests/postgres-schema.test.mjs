@@ -64,3 +64,11 @@ test("each consultation stores an immutable tariff snapshot", () => {
 test("urgent tariff availability is stored in site settings", () => {
   assert.match(source, /urgent_tariff_available boolean NOT NULL DEFAULT true/);
 });
+
+test("feedback is encrypted and visit totals are stored without visitor identifiers", () => {
+  assert.match(source, /CREATE TABLE IF NOT EXISTS visitor_feedback/);
+  assert.match(source, /status IN \('pending', 'published', 'hidden'\)/);
+  assert.match(source, /CREATE TABLE IF NOT EXISTS visitor_daily_counts/);
+  assert.match(source, /visit_day date PRIMARY KEY/);
+  assert.doesNotMatch(source, /visitor_daily_counts[\s\S]{0,300}(?:ip_address|visitor_id|browser_id)/i);
+});

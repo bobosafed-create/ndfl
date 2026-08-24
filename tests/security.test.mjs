@@ -89,6 +89,27 @@ test("new-question polling is authenticated and does not return question text", 
   assert.match(router, /consultantAuthorized\(request\)/);
 });
 
+test("visitor feedback is encrypted, moderated and consultant operations are authenticated", async () => {
+  const router = await readFile(new URL("../api/router.mjs", import.meta.url), "utf8");
+  assert.match(router, /encryptMessage\(id, "visitor_feedback", content\)/);
+  assert.match(router, /decryptMessage\(row\.id, "visitor_feedback", row\)/);
+  assert.match(router, /WHERE status = 'published'/);
+  assert.match(router, /VALUES \(\$1, \$2, 'pending'/);
+  assert.match(router, /consultantFeedbackUpdate/);
+  assert.match(router, /consultantFeedbackDelete/);
+  assert.match(router, /PATCH \/api\/consultant\/feedback/);
+  assert.match(router, /consultantAuthorized\(request\)/);
+});
+
+test("visitor statistics expose only aggregate daily counts to the consultant", async () => {
+  const router = await readFile(new URL("../api/router.mjs", import.meta.url), "utf8");
+  assert.match(router, /visitor_daily_counts/);
+  assert.match(router, /sum\(visit_count\)/);
+  assert.match(router, /consultantVisitorStats/);
+  assert.match(router, /GET \/api\/consultant\/visitor-stats/);
+  assert.match(router, /consultantAuthorized\(request\)/);
+});
+
 test("visitor attachment uploads are disabled while prior files remain consultant-only", async () => {
   const router = await readFile(new URL("../api/router.mjs", import.meta.url), "utf8");
   assert.match(router, /attachmentsDisabled/);

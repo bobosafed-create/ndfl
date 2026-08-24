@@ -154,6 +154,28 @@ const migrations = [
         ADD COLUMN IF NOT EXISTS urgent_tariff_available boolean NOT NULL DEFAULT true`,
     ],
   },
+  {
+    version: 8,
+    statements: [
+      `CREATE TABLE IF NOT EXISTS visitor_feedback (
+        id uuid PRIMARY KEY,
+        category varchar(16) NOT NULL CHECK (category IN ('review', 'suggestion')),
+        status varchar(16) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'published', 'hidden')),
+        ciphertext bytea NOT NULL,
+        encryption_iv bytea NOT NULL,
+        authentication_tag bytea NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      )`,
+      `CREATE INDEX IF NOT EXISTS visitor_feedback_status_idx
+        ON visitor_feedback (status, created_at DESC)`,
+      `CREATE TABLE IF NOT EXISTS visitor_daily_counts (
+        visit_day date PRIMARY KEY,
+        visit_count bigint NOT NULL DEFAULT 0 CHECK (visit_count >= 0),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      )`,
+    ],
+  },
 ];
 
 function missingDatabaseVariables() {

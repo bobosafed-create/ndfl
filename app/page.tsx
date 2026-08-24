@@ -5,6 +5,7 @@ import { reachMetrikaGoal } from "../lib/metrika";
 
 type Stage = "room" | "payment" | "question" | "waiting" | "answer";
 type Tariff = { code: string; name: string; description: string; amountKopecks: number; deadlineMinutes: number; recommended?: boolean; available?: boolean };
+type PublicFeedback = { id: string; category: "review" | "suggestion"; content: string; createdAt: string };
 
 const fallbackTariffs: Tariff[] = [
   { code: "basic", name: "Базовый", description: "Один простой вопрос без расчётов, краткий письменный ответ", amountKopecks: 20000, deadlineMinutes: 240 },
@@ -71,6 +72,14 @@ export default function Home() {
   const [tariffs, setTariffs] = useState<Tariff[]>(fallbackTariffs);
   const [selectedTariffCode, setSelectedTariffCode] = useState("");
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
+  const [vpnNoticeVisible, setVpnNoticeVisible] = useState(false);
+  const [feedback, setFeedback] = useState<PublicFeedback[]>([]);
+  const [feedbackFormVisible, setFeedbackFormVisible] = useState(false);
+  const [feedbackCategory, setFeedbackCategory] = useState<"review" | "suggestion">("review");
+  const [feedbackText, setFeedbackText] = useState("");
+  const [feedbackPrivacyAccepted, setFeedbackPrivacyAccepted] = useState(false);
+  const [feedbackMessage, setFeedbackMessage] = useState("");
+  const [visitorStats, setVisitorStats] = useState<{ total: number; today: number } | null>(null);
 
   const selectedTariff = useMemo(() => tariffs.find((tariff) => tariff.code === selectedTariffCode) ?? null, [selectedTariffCode, tariffs]);
   const priceKopecks = selectedTariff?.amountKopecks ?? defaultPriceKopecks;
@@ -131,6 +140,29 @@ export default function Home() {
   }, [selectedTariffCode]);
 
   useEffect(() => {
+    fetch("/api/feedback").then((response) => response.ok ? response.json() : null).then((result) => {
+      if (Array.isArray(result?.feedback)) setFeedback(result.feedback);
+    }).catch(() => {});
+
+    const moscowDay = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Moscow", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+    const visitKey = `ndfl-visit-${moscowDay}`;
+    let visitRegistration: Promise<unknown> = Promise.resolve();
+    if (!window.localStorage.getItem(visitKey)) {
+      visitRegistration = fetch("/api/visits", { method: "POST" }).then((response) => {
+        if (response.ok) window.localStorage.setItem(visitKey, "1");
+      }).catch(() => {});
+    }
+
+    const consultantKey = window.sessionStorage.getItem("ndfl-consultant-key");
+    if (consultantKey) {
+      visitRegistration.then(() => fetch("/api/consultant/visitor-stats", { headers: { authorization: `Bearer ${consultantKey}` } }))
+        .then((response) => response.ok ? response.json() : null)
+        .then((result) => { if (Number.isFinite(result?.total) && Number.isFinite(result?.today)) setVisitorStats({ total: result.total, today: result.today }); })
+        .catch(() => {});
+    }
+  }, []);
+
+  useEffect(() => {
     const saved = window.localStorage.getItem("ndfl-active-consultation");
     if (!saved) return;
     try {
@@ -163,6 +195,7 @@ export default function Home() {
   async function startPayment() {
     if (busy) return;
     setBusy(true);
+    setVpnNoticeVisible(false);
     setPaymentMessage("");
     try {
       const response = await fetch("/api/payments/create", {
@@ -187,6 +220,37 @@ export default function Home() {
       setPaymentMessage(error instanceof Error && error.message === "urgent_tariff_unavailable"
         ? "Срочный тариф сейчас временно недоступен. Выберите другой тариф."
         : "Не удалось открыть защищённую страницу оплаты. Попробуйте ещё раз немного позже.");
+      setBusy(false);
+    }
+  }
+
+  function downloadAnswer() {
+    const documentText = `Ответ консультанта по НДФЛ\r\nКонсультация № ${displayCode(consultationCode)}\r\n\r\n${answer}`;
+    const url = URL.createObjectURL(new Blob([documentText], { type: "text/plain;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `Ответ-НДФЛ-${displayCode(consultationCode)}.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function submitFeedback() {
+    if (feedbackText.trim().length < 10 || feedbackText.trim().length > 700 || !feedbackPrivacyAccepted || busy) return;
+    setBusy(true);
+    setFeedbackMessage("");
+    try {
+      const response = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ category: feedbackCategory, content: feedbackText.trim(), website: "" }),
+      });
+      if (!response.ok) throw new Error("feedback_failed");
+      setFeedbackText("");
+      setFeedbackPrivacyAccepted(false);
+      setFeedbackMessage("Спасибо! Сообщение отправлено консультанту и появится на сайте после проверки.");
+    } catch {
+      setFeedbackMessage("Не удалось отправить сообщение. Попробуйте ещё раз немного позже.");
+    } finally {
       setBusy(false);
     }
   }
@@ -286,6 +350,7 @@ export default function Home() {
     setAnswerPage(0);
     setAnswerDueAt(null);
     setSelectedTariffCode("");
+    setVpnNoticeVisible(false);
   }
 
   return (
@@ -294,6 +359,7 @@ export default function Home() {
         <nav className="nav">
           <a className="brand" href="#top" aria-label="НДФЛ.просто — наверх"><span className="brand-mark">₽</span><span>НДФЛ<span className="brand-dot">.просто</span></span></a>
           <a className="nav-link" href="#room">Как это работает <span>↓</span></a>
+          {visitorStats && <aside className="consultant-visitor-counter" aria-label="Счётчик посещений, доступный консультанту"><small>Посетители</small><b>Всего: {visitorStats.total.toLocaleString("ru-RU")}</b><span>Сегодня: {visitorStats.today.toLocaleString("ru-RU")}</span></aside>}
         </nav>
         <section id="top" className="hero-grid">
           <div className="hero-copy">
@@ -366,7 +432,7 @@ export default function Home() {
           </div>
           <div className={`safe ${answerReady ? "safe-ready" : ""}`} aria-label="Защищённый сейф с ответом"><span className="safe-label">{answerReady ? "ОТВЕТ ГОТОВ" : "Проверенный налоговым специалистом письменный ответ в срок выбранного тарифа"}</span><div className={`safe-door ${stage === "answer" ? "safe-open" : ""}`}><i className="safe-wheel" aria-hidden="true"><span /></i><b>ПЕРСОНАЛЬНЫЙ КОД</b></div><div className="safe-legs"><i/><i/></div></div><div className="rug" />
 
-          {stage === "payment" && <div className="modal-backdrop"><section className="payment-card" role="dialog" aria-modal="true" aria-labelledby="payment-title"><button className="close" onClick={() => setStage("room")} aria-label="Закрыть">×</button><span className="payment-icon">₽</span><small>Защищённая оплата через ЮKassa</small><h3 id="payment-title">{selectedTariff ? `Тариф «${selectedTariff.name}»` : "Консультация по НДФЛ"}</h3><p className="payment-deadline">{selectedDeadline}</p><div className="price-row"><span>К оплате</span><strong>{priceLabel}</strong></div><button className="action-button" disabled={busy || Boolean(paymentMessage && consultationId)} onClick={startPayment}>{busy ? "Открываем оплату…" : consultationId ? "Проверяем платёж…" : `Оплатить ${priceLabel}`}</button>{paymentMessage && <p className="payment-error" role="status">{paymentMessage}</p>}<p>Оплата проходит на странице ЮKassa. Сайт не получает и не хранит данные банковской карты.</p></section></div>}
+          {stage === "payment" && <div className="modal-backdrop">{vpnNoticeVisible ? <section className="payment-card vpn-notice-card" role="alertdialog" aria-modal="true" aria-labelledby="vpn-title"><button className="close" onClick={() => setVpnNoticeVisible(false)} aria-label="Вернуться">×</button><span className="vpn-icon" aria-hidden="true">!</span><small>Перед переходом к оплате</small><h3 id="vpn-title">Выключите VPN, если он включён</h3><p className="vpn-warning">Иначе защищённая страница оплаты может не открыться или платёж может быть отклонён.</p><button className="action-button" disabled={busy} onClick={startPayment}>{busy ? "Открываем оплату…" : "VPN выключен — перейти к оплате"}</button><button className="vpn-back" type="button" onClick={() => setVpnNoticeVisible(false)}>Вернуться назад</button></section> : <section className="payment-card" role="dialog" aria-modal="true" aria-labelledby="payment-title"><button className="close" onClick={() => setStage("room")} aria-label="Закрыть">×</button><span className="payment-icon">₽</span><small>Защищённая оплата через ЮKassa</small><h3 id="payment-title">{selectedTariff ? `Тариф «${selectedTariff.name}»` : "Консультация по НДФЛ"}</h3><p className="payment-deadline">{selectedDeadline}</p><div className="price-row"><span>К оплате</span><strong>{priceLabel}</strong></div><button className="action-button" disabled={busy || Boolean(paymentMessage && consultationId)} onClick={() => setVpnNoticeVisible(true)}>{busy ? "Открываем оплату…" : consultationId ? "Проверяем платёж…" : `Оплатить ${priceLabel}`}</button>{paymentMessage && <p className="payment-error" role="status">{paymentMessage}</p>}<p>Оплата проходит на странице ЮKassa. Сайт не получает и не хранит данные банковской карты.</p></section>}</div>}
 
           {stage === "question" && <div className="desk-layer"><article className="question-paper"><header><span>Бланк вопроса</span><strong>Номер консультации (код) — <b>{displayCode(consultationCode)}</b></strong></header>{tipVisible && <div className="timed-tip"><b>Подсказка</b> Опишите кратко свой вопрос. Ответ появится в сейфе справа не позднее срока выбранного тарифа. Не указывайте ФИО, адрес, телефон, e-mail, номера документов и другие персональные данные.</div>}<label htmlFor="question">Ваш вопрос консультанту</label><textarea id="question" value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={1200} placeholder="Например: в 2025 году я продал квартиру. Нужно ли подавать декларацию и какие документы понадобятся?"/><label className="privacy-check"><input type="checkbox" checked={privacyAccepted} onChange={(event) => setPrivacyAccepted(event.target.checked)} /><span>Я ознакомился(ась) с <a href="/legal#privacy" target="_blank">условиями конфиденциальности</a> и подтверждаю, что не указываю в вопросе персональные данные свои или третьих лиц.</span></label><div className="paper-footer"><span>{question.length} / 1200</span><button className="action-button" disabled={question.trim().length < 10 || busy || !privacyAccepted} onClick={saveQuestion}>{busy ? "Сохраняем…" : "Сохранить документ"} <b>✓</b></button></div>{safeMessage && <p className="form-message" role="status">{safeMessage}</p>}</article></div>}
 
@@ -376,10 +442,19 @@ export default function Home() {
 
           {stage === "waiting" && !codeNoticeVisible && answerReady && <div className="safe-entry-panel"><span className="safe-entry-kicker">Ответ готов</span><h3>Откройте сейф</h3><p>Введите сохранённый персональный код консультации.</p><label htmlFor="safe-code">Код от сейфа</label><div className="code-entry"><input id="safe-code" inputMode="numeric" autoComplete="one-time-code" maxLength={4} value={safeCode} onChange={(event) => setSafeCode(event.target.value.replace(/\D/g, ""))} placeholder="••••" aria-label="Четырёхзначный код консультации"/><button onClick={openSafe}>Открыть</button></div>{safeMessage && <p className="safe-message" role="status">{safeMessage}</p>}</div>}
 
-          {stage === "answer" && <div className="answer-layer"><section className="answer-carousel" aria-label={`Ответ консультанта, страница ${answerPage + 1} из ${answerPages.length}`}><div className="answer-track" style={{ transform: `translateX(-${answerPage * 100}%)` }}>{answerPages.map((page, index) => <article className="answer-paper" key={index} aria-hidden={index !== answerPage}><header><span>Ответ консультанта</span><strong>Консультация № {displayCode(consultationCode)}</strong></header><div className="consultant-stamp">КОНСУЛЬТАНТ<br/><b>ОТВЕТИЛ</b></div><h3>{index === 0 ? "Ответ готов" : "Продолжение ответа"}</h3><p className="consultation-answer">{page}</p>{index === answerPages.length - 1 && <div className="answer-note"><b>Важно:</b> ответ относится к описанной ситуации. Если существенные обстоятельства не были указаны, вывод может измениться.</div>}</article>)}</div><div className="answer-pagination"><button type="button" disabled={answerPage === 0} onClick={() => setAnswerPage((page) => Math.max(0, page - 1))}>← Назад</button><span>Страница <b>{answerPage + 1}</b> из {answerPages.length}</span>{answerPage < answerPages.length - 1 ? <button type="button" onClick={() => setAnswerPage((page) => Math.min(answerPages.length - 1, page + 1))}>Далее →</button> : <button className="finish-answer" type="button" onClick={resetConsultation}>Завершить</button>}</div><div className="answer-dots" aria-hidden="true">{answerPages.map((_, index) => <i className={index === answerPage ? "active" : ""} key={index} />)}</div></section></div>}
+          {stage === "answer" && <div className="answer-layer"><div className="answer-document-actions"><button type="button" onClick={downloadAnswer}>Скачать ответ</button><button type="button" onClick={() => window.print()}>Печать / PDF</button></div><section className="answer-carousel" aria-label={`Ответ консультанта, страница ${answerPage + 1} из ${answerPages.length}`}><div className="answer-track" style={{ transform: `translateX(-${answerPage * 100}%)` }}>{answerPages.map((page, index) => <article className="answer-paper" key={index} aria-hidden={index !== answerPage}><header><span>Ответ консультанта</span><strong>Консультация № {displayCode(consultationCode)}</strong></header><div className="consultant-stamp">КОНСУЛЬТАНТ<br/><b>ОТВЕТИЛ</b></div><h3>{index === 0 ? "Ответ готов" : "Продолжение ответа"}</h3><p className="consultation-answer">{page}</p>{index === answerPages.length - 1 && <div className="answer-note"><b>Важно:</b> ответ относится к описанной ситуации. Если существенные обстоятельства не были указаны, вывод может измениться.</div>}</article>)}</div><div className="answer-pagination"><button type="button" disabled={answerPage === 0} onClick={() => setAnswerPage((page) => Math.max(0, page - 1))}>← Назад</button><span>Страница <b>{answerPage + 1}</b> из {answerPages.length}</span>{answerPage < answerPages.length - 1 ? <button type="button" onClick={() => setAnswerPage((page) => Math.min(answerPages.length - 1, page + 1))}>Далее →</button> : <button className="finish-answer" type="button" onClick={resetConsultation}>Завершить</button>}</div><div className="answer-dots" aria-hidden="true">{answerPages.map((_, index) => <i className={index === answerPage ? "active" : ""} key={index} />)}</div></section></div>}
         </div>
         <p className="demo-note">Вопрос и ответ хранятся в зашифрованном виде. Для открытия сейфа нужны этот браузер и ваш четырёхзначный код.</p>
       </section>
+
+      <section className="feedback-section" aria-labelledby="feedback-heading">
+        <div className="feedback-heading"><span>Обратная связь</span><h2 id="feedback-heading">Отзывы и предложения посетителей</h2><p>Поделитесь впечатлением о консультации или предложите, как сделать сервис удобнее.</p></div>
+        {feedback.length > 0 && <div className="feedback-grid">{feedback.map((item) => <article key={item.id}><small>{item.category === "review" ? "Отзыв" : "Предложение"}</small><p>{item.content}</p><time>{new Date(item.createdAt).toLocaleDateString("ru-RU")}</time></article>)}</div>}
+        {feedback.length === 0 && <p className="feedback-empty">Опубликованных отзывов пока нет. Вы можете оставить первый — после проверки он появится здесь.</p>}
+        {!feedbackFormVisible ? <button className="feedback-add" type="button" onClick={() => setFeedbackFormVisible(true)}>Добавить</button> : <div className="feedback-form"><div className="feedback-kind"><label><input type="radio" name="feedback-kind" checked={feedbackCategory === "review"} onChange={() => setFeedbackCategory("review")} /> Отзыв</label><label><input type="radio" name="feedback-kind" checked={feedbackCategory === "suggestion"} onChange={() => setFeedbackCategory("suggestion")} /> Предложение</label></div><label htmlFor="feedback-text">Ваше сообщение</label><textarea id="feedback-text" maxLength={700} value={feedbackText} onChange={(event) => setFeedbackText(event.target.value)} placeholder="Напишите, что было полезно или что желательно улучшить."/><label className="privacy-check"><input type="checkbox" checked={feedbackPrivacyAccepted} onChange={(event) => setFeedbackPrivacyAccepted(event.target.checked)} /><span>Я не указываю ФИО, телефон, e-mail и другие персональные данные.</span></label><div className="feedback-form-actions"><span>{feedbackText.length} / 700</span><button className="feedback-cancel" type="button" onClick={() => setFeedbackFormVisible(false)}>Отмена</button><button className="action-button" type="button" disabled={feedbackText.trim().length < 10 || !feedbackPrivacyAccepted || busy} onClick={() => void submitFeedback()}>{busy ? "Отправляем…" : "Отправить на проверку"}</button></div>{feedbackMessage && <p className="form-message" role="status">{feedbackMessage}</p>}</div>}
+      </section>
+
+      {stage === "answer" && <article className="visitor-answer-print"><h1>Ответ консультанта по НДФЛ</h1><p className="visitor-answer-number">Консультация № {displayCode(consultationCode)}</p><div>{answer}</div><p className="visitor-answer-date">Сформировано: {new Date().toLocaleDateString("ru-RU")}</p></article>}
 
       <footer><div className="brand"><span className="brand-mark">₽</span><span>НДФЛ<span className="brand-dot">.просто</span></span></div><nav aria-label="Правовая информация"><a href="/legal#offer">Оферта</a><a href="/legal#privacy">Конфиденциальность</a><a href="/legal#refunds">Возврат</a><a href="/legal#contacts">Контакты</a></nav><a href="#top">Наверх ↑</a></footer>
       {stage === "room" && <button className="mobile-question-cta" type="button" onClick={() => setStage("payment")}>Задать вопрос · {priceLabel}</button>}

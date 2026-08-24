@@ -98,6 +98,120 @@ async function publicTariffs() {
   });
 }
 
+function normalizeFeedback(value) {
+  return typeof value === "string" ? value.replace(/\r\n/g, "\n").trim() : "";
+}
+
+async function publicFeedbackList() {
+  const database = getDatabasePool();
+  if (!database) return json({ error: "service_unavailable" }, 503);
+  const result = await database.query(
+    `SELECT id, category, ciphertext, encryption_iv, authentication_tag, created_at
+     FROM visitor_feedback
+     WHERE status = 'published'
+     ORDER BY created_at DESC
+     LIMIT 12`,
+  );
+  return json({ feedback: result.rows.map((row) => ({
+    id: row.id,
+    category: row.category,
+    content: decryptMessage(row.id, "visitor_feedback", row),
+    createdAt: row.created_at,
+  })) });
+}
+
+async function publicFeedbackCreate(request) {
+  if (!allowRequest("visitor-feedback", request, 3, 60 * 60_000)) return json({ error: "too_many_requests" }, 429);
+  const input = await body(request);
+  if (input.website) return json({ saved: true });
+  const category = input.category === "suggestion" ? "suggestion" : "review";
+  const content = normalizeFeedback(input.content);
+  if (content.length < 10 || content.length > 700) return json({ error: "invalid_feedback" }, 400);
+  const database = getDatabasePool();
+  if (!database) return json({ error: "service_unavailable" }, 503);
+  const id = randomUUID();
+  const encrypted = encryptMessage(id, "visitor_feedback", content);
+  await database.query(
+    `INSERT INTO visitor_feedback
+      (id, category, status, ciphertext, encryption_iv, authentication_tag)
+     VALUES ($1, $2, 'pending', $3, $4, $5)`,
+    [id, category, encrypted.ciphertext, encrypted.iv, encrypted.authenticationTag],
+  );
+  return json({ saved: true }, 201);
+}
+
+async function registerVisit(request) {
+  if (!allowRequest("visitor-count", request, 30, 60 * 60_000)) return json({ accepted: true });
+  const database = getDatabasePool();
+  if (!database) return json({ error: "service_unavailable" }, 503);
+  await database.query(
+    `INSERT INTO visitor_daily_counts (visit_day, visit_count)
+     VALUES ((now() AT TIME ZONE 'Europe/Moscow')::date, 1)
+     ON CONFLICT (visit_day) DO UPDATE
+       SET visit_count = visitor_daily_counts.visit_count + 1, updated_at = now()`,
+  );
+  return json({ accepted: true });
+}
+
+async function consultantVisitorStats(request) {
+  if (!allowRequest("consultant-visitor-stats", request, 60) || !consultantAuthorized(request)) return json({ error: "unauthorized" }, 401);
+  const database = getDatabasePool();
+  const result = await database.query(
+    `SELECT COALESCE(sum(visit_count), 0)::bigint AS total,
+            COALESCE(sum(visit_count) FILTER (WHERE visit_day = (now() AT TIME ZONE 'Europe/Moscow')::date), 0)::bigint AS today
+     FROM visitor_daily_counts`,
+  );
+  return json({ total: Number(result.rows[0].total), today: Number(result.rows[0].today), approximate: true });
+}
+
+async function consultantFeedbackList(request) {
+  if (!allowRequest("consultant-feedback", request, 60) || !consultantAuthorized(request)) return json({ error: "unauthorized" }, 401);
+  const database = getDatabasePool();
+  const result = await database.query(
+    `SELECT id, category, status, ciphertext, encryption_iv, authentication_tag, created_at, updated_at
+     FROM visitor_feedback ORDER BY created_at DESC LIMIT 100`,
+  );
+  return json({ feedback: result.rows.map((row) => ({
+    id: row.id,
+    category: row.category,
+    status: row.status,
+    content: decryptMessage(row.id, "visitor_feedback", row),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  })) });
+}
+
+async function consultantFeedbackUpdate(request) {
+  if (!allowRequest("consultant-feedback-write", request, 40) || !consultantAuthorized(request)) return json({ error: "unauthorized" }, 401);
+  const input = await body(request);
+  const content = normalizeFeedback(input.content);
+  const category = input.category;
+  const status = input.status;
+  if (!validUuid(input.id) || !["review", "suggestion"].includes(category) || !["pending", "published", "hidden"].includes(status) || content.length < 10 || content.length > 700) {
+    return json({ error: "invalid_feedback" }, 400);
+  }
+  const encrypted = encryptMessage(input.id, "visitor_feedback", content);
+  const database = getDatabasePool();
+  const result = await database.query(
+    `UPDATE visitor_feedback
+     SET category = $2, status = $3, ciphertext = $4, encryption_iv = $5, authentication_tag = $6, updated_at = now()
+     WHERE id = $1 RETURNING id`,
+    [input.id, category, status, encrypted.ciphertext, encrypted.iv, encrypted.authenticationTag],
+  );
+  if (!result.rows[0]) return json({ error: "not_found" }, 404);
+  return json({ saved: true });
+}
+
+async function consultantFeedbackDelete(request) {
+  if (!allowRequest("consultant-feedback-delete", request, 30) || !consultantAuthorized(request)) return json({ error: "unauthorized" }, 401);
+  const input = await body(request);
+  if (!validUuid(input.id)) return json({ error: "invalid_feedback" }, 400);
+  const database = getDatabasePool();
+  const result = await database.query("DELETE FROM visitor_feedback WHERE id = $1 RETURNING id", [input.id]);
+  if (!result.rows[0]) return json({ error: "not_found" }, 404);
+  return json({ deleted: true });
+}
+
 async function createPayment(request) {
   if (!allowRequest("payment", request, 5, 10 * 60_000)) {
     return json({ error: "too_many_requests" }, 429);
@@ -725,6 +839,9 @@ export async function routeApi(request) {
   try {
     if (route === "GET /api/consultation-price") return publicPrice();
     if (route === "GET /api/tariffs") return publicTariffs();
+    if (route === "GET /api/feedback") return publicFeedbackList();
+    if (route === "POST /api/feedback") return publicFeedbackCreate(request);
+    if (route === "POST /api/visits") return registerVisit(request);
     if (route === "POST /api/payments/create") return createPayment(request);
     if (route === "POST /api/consultations/status") return consultationStatus(request);
     if (route === "POST /api/consultations/question") return saveQuestion(request);
@@ -741,6 +858,10 @@ export async function routeApi(request) {
     if (route === "POST /api/consultant/calculations") return consultantCalculationCreate(request);
     if (route === "DELETE /api/consultant/calculations") return consultantCalculationDelete(request);
     if (route === "POST /api/consultant/settings") return consultantSettingsUpdate(request);
+    if (route === "GET /api/consultant/feedback") return consultantFeedbackList(request);
+    if (route === "PATCH /api/consultant/feedback") return consultantFeedbackUpdate(request);
+    if (route === "DELETE /api/consultant/feedback") return consultantFeedbackDelete(request);
+    if (route === "GET /api/consultant/visitor-stats") return consultantVisitorStats(request);
     if (route === "POST /api/yookassa/webhook") return webhook(request);
     return null;
   } catch (error) {

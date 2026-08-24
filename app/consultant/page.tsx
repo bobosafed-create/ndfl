@@ -19,6 +19,7 @@ type Consultation = {
 type CalculationEntry = { id: string; amountKopecks: number; note: string; createdAt: string };
 type CabinetView = "active" | "archive";
 type IncomingAlert = { id: string; count: number };
+type FeedbackItem = { id: string; category: "review" | "suggestion"; status: "pending" | "published" | "hidden"; content: string; createdAt: string; updatedAt: string };
 
 export default function ConsultantCabinet() {
   const [accessKey, setAccessKey] = useState("");
@@ -37,6 +38,7 @@ export default function ConsultantCabinet() {
   const [draftingId, setDraftingId] = useState<string | null>(null);
   const [alertsEnabled, setAlertsEnabled] = useState(false);
   const [incomingAlert, setIncomingAlert] = useState<IncomingAlert | null>(null);
+  const [feedbackItems, setFeedbackItems] = useState<FeedbackItem[]>([]);
   const knownConsultationIds = useRef<Set<string>>(new Set());
   const audioContextRef = useRef<AudioContext | null>(null);
 
@@ -66,12 +68,13 @@ export default function ConsultantCabinet() {
     setMessage("");
     try {
       const headers = { authorization: `Bearer ${key}` };
-      const [consultationsResponse, calculationsResponse] = await Promise.all([
+      const [consultationsResponse, calculationsResponse, feedbackResponse] = await Promise.all([
         fetch(`/api/consultant/consultations?view=${targetView}`, { headers }),
         fetch("/api/consultant/calculations", { headers }),
+        fetch("/api/consultant/feedback", { headers }),
       ]);
-      if (!consultationsResponse.ok || !calculationsResponse.ok) throw new Error("unauthorized");
-      const [consultationsResult, calculationsResult] = await Promise.all([consultationsResponse.json(), calculationsResponse.json()]);
+      if (!consultationsResponse.ok || !calculationsResponse.ok || !feedbackResponse.ok) throw new Error("unauthorized");
+      const [consultationsResult, calculationsResult, feedbackResult] = await Promise.all([consultationsResponse.json(), calculationsResponse.json(), feedbackResponse.json()]);
       const items: Consultation[] = consultationsResult.consultations;
       for (const item of items) knownConsultationIds.current.add(item.id);
       setConsultations(items);
@@ -86,6 +89,7 @@ export default function ConsultantCabinet() {
       setCalculationTotal(calculationsResult.totalKopecks);
       setCalculationValue(String((calculationsResult.currentPriceKopecks ?? 10000) / 100));
       setUrgentTariffAvailable(calculationsResult.urgentTariffAvailable !== false);
+      setFeedbackItems(Array.isArray(feedbackResult.feedback) ? feedbackResult.feedback : []);
       setAuthenticated(true);
       window.sessionStorage.setItem("ndfl-consultant-key", key);
       const withoutDraft = items.find((item) => item.status === "question_submitted" && !item.aiDraft);
@@ -271,7 +275,7 @@ export default function ConsultantCabinet() {
 
   function signOut() {
     window.sessionStorage.removeItem("ndfl-consultant-key");
-    setAuthenticated(false); setAccessKey(""); setConsultations([]); setCalculationEntries([]); setCalculationTotal(0); setAlertsEnabled(false); setIncomingAlert(null);
+    setAuthenticated(false); setAccessKey(""); setConsultations([]); setCalculationEntries([]); setCalculationTotal(0); setAlertsEnabled(false); setIncomingAlert(null); setFeedbackItems([]);
   }
 
   function pressCalculator(key: string) {
@@ -362,6 +366,42 @@ export default function ConsultantCabinet() {
     finally { setDraftingId(null); }
   }
 
+  function editFeedback(id: string, changes: Partial<FeedbackItem>) {
+    setFeedbackItems((current) => current.map((item) => item.id === id ? { ...item, ...changes } : item));
+  }
+
+  async function saveFeedback(item: FeedbackItem, status: FeedbackItem["status"] = item.status) {
+    if (item.content.trim().length < 10 || loading) return;
+    setLoading(true); setMessage("");
+    try {
+      const response = await fetch("/api/consultant/feedback", {
+        method: "PATCH",
+        headers: { authorization: `Bearer ${accessKey}`, "content-type": "application/json" },
+        body: JSON.stringify({ id: item.id, category: item.category, status, content: item.content.trim() }),
+      });
+      if (!response.ok) throw new Error("save_failed");
+      editFeedback(item.id, { status, content: item.content.trim() });
+      setMessage(status === "published" ? "Отзыв проверен и опубликован на сайте." : status === "hidden" ? "Сообщение скрыто с сайта." : "Изменения отзыва сохранены.");
+    } catch { setMessage("Не удалось сохранить отзыв или предложение."); }
+    finally { setLoading(false); }
+  }
+
+  async function deleteFeedback(id: string) {
+    if (!window.confirm("Навсегда удалить этот отзыв или предложение?")) return;
+    setLoading(true); setMessage("");
+    try {
+      const response = await fetch("/api/consultant/feedback", {
+        method: "DELETE",
+        headers: { authorization: `Bearer ${accessKey}`, "content-type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (!response.ok) throw new Error("delete_failed");
+      setFeedbackItems((current) => current.filter((item) => item.id !== id));
+      setMessage("Отзыв или предложение удалено.");
+    } catch { setMessage("Не удалось удалить сообщение."); }
+    finally { setLoading(false); }
+  }
+
   const selected = consultations.find((item) => item.id === selectedId) ?? null;
   const selectedAnswer = selected ? answers[selected.id] ?? selected.answer ?? "" : "";
 
@@ -405,6 +445,8 @@ export default function ConsultantCabinet() {
               <p className="calculator-disclaimer">Архив открывается здесь же, без дополнительного пароля.</p>
             </div>
           </section>
+
+          <section className="feedback-admin" aria-labelledby="feedback-admin-title"><div className="feedback-admin-heading"><div><span className="mini-label">Модерация</span><h2 id="feedback-admin-title">Отзывы и предложения</h2></div><b>{feedbackItems.filter((item) => item.status === "pending").length} ожидают проверки</b></div>{feedbackItems.length === 0 ? <p className="feedback-admin-empty">Новых сообщений посетителей пока нет.</p> : <div className="feedback-admin-list">{feedbackItems.map((item) => <article key={item.id} className={item.status}><header><select aria-label="Тип сообщения" value={item.category} onChange={(event) => editFeedback(item.id, { category: event.target.value as FeedbackItem["category"] })}><option value="review">Отзыв</option><option value="suggestion">Предложение</option></select><span>{item.status === "published" ? "Опубликовано" : item.status === "hidden" ? "Скрыто" : "Ожидает проверки"}</span><time>{new Date(item.createdAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</time></header><textarea maxLength={700} rows={5} value={item.content} onChange={(event) => editFeedback(item.id, { content: event.target.value })}/><footer><small>{item.content.length} / 700</small><button type="button" disabled={loading || item.content.trim().length < 10} onClick={() => void saveFeedback(item)}>Сохранить</button><button className="feedback-publish" type="button" disabled={loading || item.content.trim().length < 10} onClick={() => void saveFeedback(item, "published")}>Опубликовать</button><button className="feedback-hide" type="button" disabled={loading} onClick={() => void saveFeedback(item, "hidden")}>Скрыть</button><button className="feedback-delete" type="button" disabled={loading} onClick={() => void deleteFeedback(item.id)}>Удалить</button></footer></article>)}</div>}</section>
 
           {!selected ? <div className="cabinet-empty">Выберите консультацию в перечне справа.</div> : (
             <article className={`consultation-editor ${selected.status}`} key={selected.id}>
