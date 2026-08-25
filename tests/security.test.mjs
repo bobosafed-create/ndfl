@@ -127,13 +127,14 @@ test("AI drafts are server-side, authenticated and never sent directly to the vi
   assert.match(router, /author = 'ai_draft'/);
   assert.match(router, /cached: true/);
   assert.match(router, /consultantAuthorized\(request\)/);
-  assert.match(ai, /process\.env\.TIMEWEB_AI_API_KEY/);
+  assert.match(ai, /process\.env\.TIMEWEB_AI_AGENT_API_KEY/);
+  assert.match(ai, /process\.env\.TIMEWEB_AI_AGENT_BASE_URL/);
   assert.match(ai, /api\.timeweb\.ai\/v1/);
   assert.match(ai, /chat\/completions/);
   assert.match(ai, /dashscope\/qwen3\.5-plus/);
   assert.doesNotMatch(cabinet, /TIMEWEB_AI_API_KEY/);
   assert.match(cabinet, /Подготовить черновик с ИИ/);
-  assert.match(cabinet, /Qwen готовит черновик ответа/);
+  assert.match(cabinet, /AI-агент изучает официальные источники/);
   assert.match(cabinet, /Отправить в сейф/);
 });
 
@@ -145,9 +146,13 @@ test("AI draft formatting removes Markdown stars before editing", async () => {
   );
 });
 
-test("Qwen receives enough time for a detailed tax draft", async () => {
+test("the research agent receives enough time and space for a detailed tax draft", async () => {
   const ai = await readFile(new URL("../lib/ai.mjs", import.meta.url), "utf8");
-  assert.match(ai, /120_000/);
+  assert.match(ai, /180_000/);
+  assert.match(ai, /max_tokens: 6000/);
+  assert.match(ai, /publication\.pravo\.gov\.ru/);
+  assert.match(ai, /nalog\.gov\.ru/);
+  assert.match(ai, /minfin\.gov\.ru/);
   assert.doesNotMatch(ai, /45_000/);
 });
 

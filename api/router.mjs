@@ -20,7 +20,7 @@ import { CONSULTATION_TARIFFS, resolveTariff } from "../lib/tariffs.mjs";
 
 const rateLimits = new Map();
 const ANSWER_NOTICE = "Пометка консультанта: Ответ составлен по предоставленным данным. Если у вас имеются дополнительные обезличенные сведения, способные повлиять на вывод, оформите новый вопрос в том же порядке, что и первоначальный.";
-const MAX_ANSWER_LENGTH = 6000;
+const MAX_ANSWER_LENGTH = 15000;
 
 function withAnswerNotice(answer) {
   return answer.endsWith(ANSWER_NOTICE) ? answer : `${answer}\n\n${ANSWER_NOTICE}`;
@@ -706,6 +706,7 @@ async function consultantAiDraft(request) {
 
   const input = await body(request);
   if (!validUuid(input.consultationId)) return json({ error: "invalid_consultation" }, 400);
+  const regenerate = input.regenerate === true;
   const database = getDatabasePool();
   const result = await database.query(
     `SELECT c.id, m.ciphertext, m.encryption_iv, m.authentication_tag
@@ -726,7 +727,7 @@ async function consultantAiDraft(request) {
      ORDER BY created_at DESC LIMIT 1`,
     [consultation.id],
   );
-  if (existingDraft.rows[0]) {
+  if (existingDraft.rows[0] && !regenerate) {
     return json({ draft: decryptMessage(consultation.id, "ai_draft", existingDraft.rows[0]), cached: true });
   }
 
@@ -738,7 +739,11 @@ async function consultantAiDraft(request) {
       `INSERT INTO consultation_messages
         (id, consultation_id, author, ciphertext, encryption_iv, authentication_tag)
        VALUES ($1, $2, 'ai_draft', $3, $4, $5)
-       ON CONFLICT DO NOTHING`,
+       ON CONFLICT (consultation_id) WHERE author = 'ai_draft'
+       DO UPDATE SET ciphertext = EXCLUDED.ciphertext,
+                     encryption_iv = EXCLUDED.encryption_iv,
+                     authentication_tag = EXCLUDED.authentication_tag,
+                     created_at = now()`,
       [randomUUID(), consultation.id, encrypted.ciphertext, encrypted.iv, encrypted.authenticationTag],
     );
     return json({ draft, cached: false });
