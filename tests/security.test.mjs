@@ -149,7 +149,7 @@ test("AI draft formatting removes Markdown stars before editing", async () => {
 test("the research agent receives enough time and space for a detailed tax draft", async () => {
   const ai = await readFile(new URL("../lib/ai.mjs", import.meta.url), "utf8");
   assert.match(ai, /180_000/);
-  assert.match(ai, /max_tokens: 6000/);
+  assert.match(ai, /max_tokens: 4500/);
   assert.match(ai, /publication\.pravo\.gov\.ru/);
   assert.match(ai, /nalog\.gov\.ru/);
   assert.match(ai, /minfin\.gov\.ru/);
