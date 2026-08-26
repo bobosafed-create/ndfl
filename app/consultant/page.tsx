@@ -16,7 +16,6 @@ type Consultation = {
   attachments: { id: string; name: string; mimeType: string; size: number }[];
 };
 
-type CalculationEntry = { id: string; amountKopecks: number; note: string; createdAt: string };
 type CabinetView = "active" | "archive";
 type IncomingAlert = { id: string; count: number };
 type FeedbackItem = { id: string; category: "review" | "suggestion"; status: "pending" | "published" | "hidden"; content: string; createdAt: string; updatedAt: string };
@@ -39,8 +38,6 @@ export default function ConsultantCabinet() {
   const [loading, setLoading] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [calculationValue, setCalculationValue] = useState("100");
-  const [calculationEntries, setCalculationEntries] = useState<CalculationEntry[]>([]);
-  const [calculationTotal, setCalculationTotal] = useState(0);
   const [urgentTariffAvailable, setUrgentTariffAvailable] = useState(true);
   const [draftingId, setDraftingId] = useState<string | null>(null);
   const [alertsEnabled, setAlertsEnabled] = useState(false);
@@ -93,8 +90,6 @@ export default function ConsultantCabinet() {
         for (const item of items) if (next[item.id] === undefined && (item.answer || item.aiDraft)) next[item.id] = item.answer || item.aiDraft || "";
         return next;
       });
-      setCalculationEntries(calculationsResult.entries);
-      setCalculationTotal(calculationsResult.totalKopecks);
       setCalculationValue(String((calculationsResult.currentPriceKopecks ?? 10000) / 100));
       setUrgentTariffAvailable(calculationsResult.urgentTariffAvailable !== false);
       if (Array.isArray(calculationsResult.serviceSchedule) && calculationsResult.serviceSchedule.length === 7) setServiceSchedule(calculationsResult.serviceSchedule);
@@ -284,7 +279,7 @@ export default function ConsultantCabinet() {
 
   function signOut() {
     window.sessionStorage.removeItem("ndfl-consultant-key");
-    setAuthenticated(false); setAccessKey(""); setConsultations([]); setCalculationEntries([]); setCalculationTotal(0); setAlertsEnabled(false); setIncomingAlert(null); setFeedbackItems([]);
+    setAuthenticated(false); setAccessKey(""); setConsultations([]); setAlertsEnabled(false); setIncomingAlert(null); setFeedbackItems([]);
   }
 
   function pressCalculator(key: string) {
@@ -350,21 +345,6 @@ export default function ConsultantCabinet() {
       setServiceSchedule(result.serviceSchedule);
       setMessage("Дни и часы приёма сохранены и уже показаны посетителям на главной странице.");
     } catch { setMessage("Не удалось сохранить расписание. Проверьте время и повторите попытку."); }
-    finally { setLoading(false); }
-  }
-
-  async function deleteCalculation(id: string) {
-    if (!window.confirm("Удалить эту старую тестовую сумму?")) return;
-    setLoading(true); setMessage("");
-    try {
-      const response = await fetch("/api/consultant/calculations", {
-        method: "DELETE",
-        headers: { authorization: `Bearer ${accessKey}`, "content-type": "application/json" },
-        body: JSON.stringify({ id }),
-      });
-      if (!response.ok) throw new Error("delete_failed");
-      await load(accessKey, view); setMessage("Тестовая сумма удалена.");
-    } catch { setMessage("Не удалось удалить тестовую сумму."); }
     finally { setLoading(false); }
   }
 
@@ -473,8 +453,6 @@ export default function ConsultantCabinet() {
             </div>
 
             <div className="calculation-ledger">
-              <span className="mini-label">Старые тестовые записи</span><strong>{(calculationTotal / 100).toLocaleString("ru-RU")} ₽</strong><small>{calculationEntries.length} записей — они не являются платежами ЮKassa</small>
-              <div className="calculation-list compact">{calculationEntries.length === 0 ? <p>Тестовых записей нет.</p> : calculationEntries.map((entry) => <div key={entry.id}><span>{entry.note || "Тестовая сумма"}<time>{new Date(entry.createdAt).toLocaleDateString("ru-RU")}</time></span><b>{(entry.amountKopecks / 100).toLocaleString("ru-RU")} ₽</b><button className="ledger-delete" type="button" disabled={loading} onClick={() => void deleteCalculation(entry.id)}>×</button></div>)}</div>
               <div className="consultation-index-heading"><span className="mini-label">Перечень консультаций</span><div className="archive-tabs"><button type="button" className={view === "active" ? "active" : ""} onClick={() => void switchView("active")}>В работе · {counts.active}</button><button type="button" className={view === "archive" ? "active" : ""} onClick={() => void switchView("archive")}>Архив · {counts.archive}</button></div></div>
               <div className="consultation-index">{consultations.length === 0 ? <p>{view === "archive" ? "Архив пока пуст." : "Новых вопросов пока нет."}</p> : consultations.map((item, index) => <button type="button" className={item.id === selectedId ? "selected" : ""} key={item.id} onClick={() => setSelectedId(item.id)}><span>№ {String(index + 1).padStart(2, "0")} · {item.status === "question_submitted" ? "ждёт ответа" : item.status === "archived" ? "в архиве" : "выполнено"}</span><small>{item.tariff ? `${item.tariff.name} · ${(item.tariff.amountKopecks / 100).toLocaleString("ru-RU")} ₽ · ` : ""}{new Date(item.createdAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</small></button>)}</div>
               <p className="calculator-disclaimer">Архив открывается здесь же, без дополнительного пароля.</p>
@@ -487,8 +465,8 @@ export default function ConsultantCabinet() {
                 {serviceSchedule.map((entry) => <div className={`schedule-row ${entry.enabled ? "enabled" : "disabled"}`} role="row" key={entry.day}>
                   <b role="cell">{scheduleDayLabels[entry.day]}</b>
                   <label role="cell" className="schedule-switch"><input type="checkbox" checked={entry.enabled} onChange={(event) => updateScheduleDay(entry.day, { enabled: event.target.checked })}/><span>{entry.enabled ? "Открыт" : "Выходной"}</span></label>
-                  <label role="cell"><span className="visually-hidden">Начало приёма в {scheduleDayLabels[entry.day]}</span><input type="time" value={entry.start} disabled={!entry.enabled} onChange={(event) => updateScheduleDay(entry.day, { start: event.target.value })}/></label>
-                  <label role="cell"><span className="visually-hidden">Окончание приёма в {scheduleDayLabels[entry.day]}</span><input type="time" value={entry.end} disabled={!entry.enabled} onChange={(event) => updateScheduleDay(entry.day, { end: event.target.value })}/></label>
+                  <label role="cell"><span className="schedule-mobile-time-label" aria-hidden="true">С</span><span className="visually-hidden">Начало приёма в {scheduleDayLabels[entry.day]}</span><input type="time" value={entry.start} disabled={!entry.enabled} onChange={(event) => updateScheduleDay(entry.day, { start: event.target.value })}/></label>
+                  <label role="cell"><span className="schedule-mobile-time-label" aria-hidden="true">До</span><span className="visually-hidden">Окончание приёма в {scheduleDayLabels[entry.day]}</span><input type="time" value={entry.end} disabled={!entry.enabled} onChange={(event) => updateScheduleDay(entry.day, { end: event.target.value })}/></label>
                 </div>)}
               </div>
               <button className="schedule-save" type="button" disabled={loading} onClick={() => void saveServiceSchedule()}>Сохранить расписание</button>
@@ -497,7 +475,7 @@ export default function ConsultantCabinet() {
 
           <section className="feedback-admin" aria-labelledby="feedback-admin-title"><div className="feedback-admin-heading"><div><span className="mini-label">Модерация</span><h2 id="feedback-admin-title">Отзывы и предложения</h2></div><b>{feedbackItems.filter((item) => item.status === "pending").length} ожидают проверки</b></div>{feedbackItems.length === 0 ? <p className="feedback-admin-empty">Новых сообщений посетителей пока нет.</p> : <div className="feedback-admin-list">{feedbackItems.map((item) => <article key={item.id} className={item.status}><header><select aria-label="Тип сообщения" value={item.category} onChange={(event) => editFeedback(item.id, { category: event.target.value as FeedbackItem["category"] })}><option value="review">Отзыв</option><option value="suggestion">Предложение</option></select><span>{item.status === "published" ? "Опубликовано" : item.status === "hidden" ? "Скрыто" : "Ожидает проверки"}</span><time>{new Date(item.createdAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</time></header><textarea maxLength={700} rows={5} value={item.content} onChange={(event) => editFeedback(item.id, { content: event.target.value })}/><footer><small>{item.content.length} / 700</small><button type="button" disabled={loading || item.content.trim().length < 10} onClick={() => void saveFeedback(item)}>Сохранить</button><button className="feedback-publish" type="button" disabled={loading || item.content.trim().length < 10} onClick={() => void saveFeedback(item, "published")}>Опубликовать</button><button className="feedback-hide" type="button" disabled={loading} onClick={() => void saveFeedback(item, "hidden")}>Скрыть</button><button className="feedback-delete" type="button" disabled={loading} onClick={() => void deleteFeedback(item.id)}>Удалить</button></footer></article>)}</div>}</section>
 
-          {!selected ? <div className="cabinet-empty">Выберите консультацию в перечне справа.</div> : (
+          {!selected ? <div className="cabinet-empty">Выберите консультацию в перечне выше.</div> : (
             <article className={`consultation-editor ${selected.status}`} key={selected.id}>
               <header><div><span className="mini-label">Консультация</span><h2>{selected.status === "archived" ? "Архивная запись" : selected.status === "answered" ? "Выполненная консультация" : "Новый вопрос"}</h2>{selected.tariff && <p className="consultation-tariff">Тариф: <b>{selected.tariff.name}</b> · {(selected.tariff.amountKopecks / 100).toLocaleString("ru-RU")} ₽ · {selected.tariff.deadlineMinutes === 60 ? "1 час" : `${selected.tariff.deadlineMinutes / 60} ч`}</p>}</div><div className="consultation-status"><b>{selected.status === "question_submitted" ? "Ждёт ответа" : selected.status === "archived" ? "Архив" : "Ответ отправлен"}</b><time>{selected.answerDueAt ? `срок до ${new Date(selected.answerDueAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}` : "без срока"}</time></div></header>
               <section className="consultation-document question-document"><h3>Вопрос посетителя</h3><p>{selected.question}</p></section>

@@ -141,6 +141,8 @@ test("renders the consultant cabinet", async () => {
   assert.match(page, /Дни и часы приёма вопросов/);
   assert.match(page, /Сохранить расписание/);
   assert.match(page, /serviceSchedule/);
+  assert.match(page, /Выберите консультацию в перечне выше/);
+  assert.doesNotMatch(page, /Старые тестовые записи|Тестовых записей нет|не являются платежами ЮKassa/);
 });
 
 test("provides the short consultant cabinet address", async () => {
