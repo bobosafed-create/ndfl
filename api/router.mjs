@@ -21,6 +21,43 @@ import { CONSULTATION_TARIFFS, resolveTariff } from "../lib/tariffs.mjs";
 const rateLimits = new Map();
 const ANSWER_NOTICE = "Пометка консультанта: Ответ составлен по предоставленным данным. Если у вас имеются дополнительные обезличенные сведения, способные повлиять на вывод, оформите новый вопрос в том же порядке, что и первоначальный.";
 const MAX_ANSWER_LENGTH = 15000;
+const SCHEDULE_DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+const DEFAULT_SERVICE_SCHEDULE = SCHEDULE_DAYS.map((day, index) => ({
+  day,
+  enabled: index < 5,
+  start: "09:00",
+  end: "13:00",
+}));
+
+function validClockTime(value) {
+  return typeof value === "string" && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
+}
+
+function normalizeServiceSchedule(value) {
+  if (!Array.isArray(value) || value.length !== SCHEDULE_DAYS.length) return DEFAULT_SERVICE_SCHEDULE;
+  const byDay = new Map(value.map((entry) => [entry?.day, entry]));
+  if (byDay.size !== SCHEDULE_DAYS.length) return DEFAULT_SERVICE_SCHEDULE;
+  const normalized = [];
+  for (const day of SCHEDULE_DAYS) {
+    const entry = byDay.get(day);
+    if (!entry || typeof entry.enabled !== "boolean" || !validClockTime(entry.start) || !validClockTime(entry.end)) return DEFAULT_SERVICE_SCHEDULE;
+    if (entry.enabled && entry.start >= entry.end) return DEFAULT_SERVICE_SCHEDULE;
+    normalized.push({ day, enabled: entry.enabled, start: entry.start, end: entry.end });
+  }
+  return normalized;
+}
+
+function validServiceSchedule(value) {
+  if (!Array.isArray(value) || value.length !== SCHEDULE_DAYS.length) return false;
+  const days = new Set();
+  for (const entry of value) {
+    if (!entry || !SCHEDULE_DAYS.includes(entry.day) || days.has(entry.day)) return false;
+    if (typeof entry.enabled !== "boolean" || !validClockTime(entry.start) || !validClockTime(entry.end)) return false;
+    if (entry.enabled && entry.start >= entry.end) return false;
+    days.add(entry.day);
+  }
+  return days.size === SCHEDULE_DAYS.length;
+}
 
 function withAnswerNotice(answer) {
   return answer.endsWith(ANSWER_NOTICE) ? answer : `${answer}\n\n${ANSWER_NOTICE}`;
@@ -87,10 +124,11 @@ async function publicTariffs() {
   const database = getDatabasePool();
   if (!database) return json({ error: "service_unavailable" }, 503);
   const result = await database.query(
-    "SELECT consultation_price_kopecks, urgent_tariff_available FROM site_settings WHERE singleton = true",
+    "SELECT consultation_price_kopecks, urgent_tariff_available, consultation_schedule FROM site_settings WHERE singleton = true",
   );
   return json({
     defaultAmountKopecks: result.rows[0]?.consultation_price_kopecks ?? 10000,
+    serviceSchedule: normalizeServiceSchedule(result.rows[0]?.consultation_schedule),
     tariffs: CONSULTATION_TARIFFS.map((tariff) => ({
       ...tariff,
       available: tariff.code !== "urgent" || result.rows[0]?.urgent_tariff_available !== false,
@@ -767,10 +805,11 @@ async function consultantCalculations(request) {
   const totalResult = await database.query(
     "SELECT COALESCE(SUM(amount_kopecks), 0)::bigint AS total_kopecks FROM consultant_calculations",
   );
-  const priceResult = await database.query("SELECT consultation_price_kopecks, urgent_tariff_available FROM site_settings WHERE singleton = true");
+  const priceResult = await database.query("SELECT consultation_price_kopecks, urgent_tariff_available, consultation_schedule FROM site_settings WHERE singleton = true");
   return json({
     currentPriceKopecks: priceResult.rows[0]?.consultation_price_kopecks ?? 10000,
     urgentTariffAvailable: priceResult.rows[0]?.urgent_tariff_available !== false,
+    serviceSchedule: normalizeServiceSchedule(priceResult.rows[0]?.consultation_schedule),
     totalKopecks: Number(totalResult.rows[0].total_kopecks),
     entries: result.rows.map((row) => ({
       id: row.id,
@@ -786,15 +825,24 @@ async function consultantSettingsUpdate(request) {
     return json({ error: "unauthorized" }, 401);
   }
   const input = await body(request);
-  if (typeof input.urgentTariffAvailable !== "boolean") {
+  const hasUrgentSetting = typeof input.urgentTariffAvailable === "boolean";
+  const hasSchedule = input.serviceSchedule !== undefined;
+  if ((!hasUrgentSetting && !hasSchedule) || (hasSchedule && !validServiceSchedule(input.serviceSchedule))) {
     return json({ error: "invalid_settings" }, 400);
   }
   const database = getDatabasePool();
-  await database.query(
-    `UPDATE site_settings SET urgent_tariff_available = $1, updated_at = now() WHERE singleton = true`,
-    [input.urgentTariffAvailable],
+  const current = await database.query(
+    "SELECT urgent_tariff_available, consultation_schedule FROM site_settings WHERE singleton = true",
   );
-  return json({ saved: true, urgentTariffAvailable: input.urgentTariffAvailable });
+  const urgentTariffAvailable = hasUrgentSetting ? input.urgentTariffAvailable : current.rows[0]?.urgent_tariff_available !== false;
+  const serviceSchedule = hasSchedule ? normalizeServiceSchedule(input.serviceSchedule) : normalizeServiceSchedule(current.rows[0]?.consultation_schedule);
+  await database.query(
+    `UPDATE site_settings
+     SET urgent_tariff_available = $1, consultation_schedule = $2::jsonb, updated_at = now()
+     WHERE singleton = true`,
+    [urgentTariffAvailable, JSON.stringify(serviceSchedule)],
+  );
+  return json({ saved: true, urgentTariffAvailable, serviceSchedule });
 }
 
 async function consultantCalculationCreate(request) {

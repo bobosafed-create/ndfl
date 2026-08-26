@@ -65,6 +65,12 @@ test("urgent tariff availability is stored in site settings", () => {
   assert.match(source, /urgent_tariff_available boolean NOT NULL DEFAULT true/);
 });
 
+test("the editable weekly service schedule is stored in site settings", () => {
+  assert.match(source, /consultation_schedule jsonb NOT NULL DEFAULT/);
+  assert.match(source, /"day":"monday"/);
+  assert.match(source, /"day":"sunday"/);
+});
+
 test("feedback is encrypted and visit totals are stored without visitor identifiers", () => {
   assert.match(source, /CREATE TABLE IF NOT EXISTS visitor_feedback/);
   assert.match(source, /status IN \('pending', 'published', 'hidden'\)/);

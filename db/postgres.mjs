@@ -176,6 +176,14 @@ const migrations = [
       )`,
     ],
   },
+  {
+    version: 9,
+    statements: [
+      `ALTER TABLE site_settings
+        ADD COLUMN IF NOT EXISTS consultation_schedule jsonb NOT NULL DEFAULT
+        '[{"day":"monday","enabled":true,"start":"09:00","end":"13:00"},{"day":"tuesday","enabled":true,"start":"09:00","end":"13:00"},{"day":"wednesday","enabled":true,"start":"09:00","end":"13:00"},{"day":"thursday","enabled":true,"start":"09:00","end":"13:00"},{"day":"friday","enabled":true,"start":"09:00","end":"13:00"},{"day":"saturday","enabled":false,"start":"09:00","end":"13:00"},{"day":"sunday","enabled":false,"start":"09:00","end":"13:00"}]'::jsonb`,
+    ],
+  },
 ];
 
 function missingDatabaseVariables() {

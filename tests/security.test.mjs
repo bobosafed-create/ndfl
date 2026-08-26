@@ -69,7 +69,7 @@ test("urgent tariff availability is controlled only from the authenticated cabin
   assert.match(router, /consultantSettingsUpdate/);
   assert.match(router, /POST \/api\/consultant\/settings/);
   assert.match(router, /consultantAuthorized\(request\)/);
-  assert.match(router, /typeof input\.urgentTariffAvailable !== "boolean"/);
+  assert.match(router, /hasUrgentSetting/);
 });
 
 test("consultant calculations require the consultant key", async () => {
@@ -77,6 +77,14 @@ test("consultant calculations require the consultant key", async () => {
   assert.match(router, /consultantCalculations/);
   assert.match(router, /consultantCalculationCreate/);
   assert.match(router, /consultantCalculationDelete/);
+  assert.match(router, /consultantAuthorized\(request\)/);
+});
+
+test("consultant schedule updates are authenticated and validated", async () => {
+  const router = await readFile(new URL("../api/router.mjs", import.meta.url), "utf8");
+  assert.match(router, /consultantSettingsUpdate/);
+  assert.match(router, /validServiceSchedule/);
+  assert.match(router, /consultation_schedule = \$2::jsonb/);
   assert.match(router, /consultantAuthorized\(request\)/);
 });
 

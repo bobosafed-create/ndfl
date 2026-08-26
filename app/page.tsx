@@ -6,6 +6,14 @@ import { reachMetrikaGoal } from "../lib/metrika";
 type Stage = "room" | "payment" | "question" | "waiting" | "answer";
 type Tariff = { code: string; name: string; description: string; amountKopecks: number; deadlineMinutes: number; recommended?: boolean; available?: boolean };
 type PublicFeedback = { id: string; category: "review" | "suggestion"; content: string; createdAt: string };
+type ScheduleDay = { day: string; enabled: boolean; start: string; end: string };
+
+const scheduleDayLabels: Record<string, string> = {
+  monday: "Понедельник", tuesday: "Вторник", wednesday: "Среда", thursday: "Четверг",
+  friday: "Пятница", saturday: "Суббота", sunday: "Воскресенье",
+};
+
+const fallbackServiceSchedule: ScheduleDay[] = Object.keys(scheduleDayLabels).map((day, index) => ({ day, enabled: index < 5, start: "09:00", end: "13:00" }));
 
 const fallbackTariffs: Tariff[] = [
   { code: "basic", name: "Базовый", description: "Один простой вопрос без расчётов, краткий письменный ответ", amountKopecks: 20000, deadlineMinutes: 240 },
@@ -19,6 +27,23 @@ function tariffDeadline(minutes: number) {
   if (minutes === 240) return "Ответ в течение 4 часов";
   if (minutes === 480) return "Ответ в течение 8 часов";
   return `Ответ в течение ${minutes} минут`;
+}
+
+function formatServiceSchedule(schedule: ScheduleDay[]) {
+  const groups: { first: ScheduleDay; last: ScheduleDay }[] = [];
+  for (const day of schedule) {
+    if (!day.enabled) continue;
+    const previous = groups.at(-1);
+    const previousIndex = previous ? schedule.findIndex((item) => item.day === previous.last.day) : -2;
+    const currentIndex = schedule.findIndex((item) => item.day === day.day);
+    if (previous && previous.last.start === day.start && previous.last.end === day.end && currentIndex === previousIndex + 1) previous.last = day;
+    else groups.push({ first: day, last: day });
+  }
+  if (groups.length === 0) return "Приём вопросов временно приостановлен";
+  return groups.map(({ first, last }) => {
+    const days = first.day === last.day ? scheduleDayLabels[first.day] : `${scheduleDayLabels[first.day]}–${scheduleDayLabels[last.day].toLowerCase()}`;
+    return `${days}: ${first.start}–${first.end}`;
+  }).join(" · ");
 }
 
 function paginateAnswer(text: string, pageSize = 1050) {
@@ -80,12 +105,14 @@ export default function Home() {
   const [feedbackPrivacyAccepted, setFeedbackPrivacyAccepted] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState("");
   const [visitorStats, setVisitorStats] = useState<{ total: number; today: number } | null>(null);
+  const [serviceSchedule, setServiceSchedule] = useState<ScheduleDay[]>(fallbackServiceSchedule);
 
   const selectedTariff = useMemo(() => tariffs.find((tariff) => tariff.code === selectedTariffCode) ?? null, [selectedTariffCode, tariffs]);
   const priceKopecks = selectedTariff?.amountKopecks ?? defaultPriceKopecks;
   const priceLabel = useMemo(() => `${(priceKopecks / 100).toLocaleString("ru-RU")} ₽`, [priceKopecks]);
   const selectedDeadline = selectedTariff ? tariffDeadline(selectedTariff.deadlineMinutes) : "Срок будет указан после оплаты";
   const answerPages = useMemo(() => paginateAnswer(answer), [answer]);
+  const serviceScheduleText = useMemo(() => formatServiceSchedule(serviceSchedule), [serviceSchedule]);
 
   const deadline = useMemo(() => {
     if (!answerDueAt) return "в срок выбранного тарифа";
@@ -132,6 +159,7 @@ export default function Home() {
   useEffect(() => {
     fetch("/api/tariffs").then((response) => response.ok ? response.json() : null).then((result) => {
       if (Number.isInteger(result?.defaultAmountKopecks)) setDefaultPriceKopecks(result.defaultAmountKopecks);
+      if (Array.isArray(result?.serviceSchedule) && result.serviceSchedule.length === 7) setServiceSchedule(result.serviceSchedule);
       if (Array.isArray(result?.tariffs) && result.tariffs.length > 0) {
         setTariffs(result.tariffs);
         if (result.tariffs.some((tariff: Tariff) => tariff.code === selectedTariffCode && tariff.available === false)) setSelectedTariffCode("");
@@ -410,7 +438,7 @@ export default function Home() {
       </section>
 
       <section className="pricing-section" aria-labelledby="pricing-heading">
-        <div className="pricing-heading"><span>Стоимость услуг</span><h2 id="pricing-heading">Выберите подходящий тариф</h2><p>Выбор действует только для этой консультации. Если тариф не выбран, применяется текущая цена консультанта — <strong>{(defaultPriceKopecks / 100).toLocaleString("ru-RU")} ₽</strong>.</p><div className="service-hours"><b>Приём вопросов:</b> понедельник–пятница, с 09:00 до 13:00 по московскому времени.<span>Срочный тариф в отдельные часы может быть недоступен.</span></div></div>
+        <div className="pricing-heading"><span>Стоимость услуг</span><h2 id="pricing-heading">Выберите подходящий тариф</h2><p>Выбор действует только для этой консультации. Если тариф не выбран, применяется текущая цена консультанта — <strong>{(defaultPriceKopecks / 100).toLocaleString("ru-RU")} ₽</strong>.</p><div className="service-hours"><b>Приём вопросов</b><strong>{serviceScheduleText}</strong><em>Время московское</em><span>Срочный тариф в отдельные часы может быть недоступен.</span></div></div>
         <div className="tariff-grid" role="radiogroup" aria-label="Тариф консультации">
           {tariffs.map((tariff) => <label className={`tariff-card ${selectedTariffCode === tariff.code ? "selected" : ""} ${tariff.available === false ? "unavailable" : ""}`} key={tariff.code}>
             <input type="radio" name="consultation-tariff" value={tariff.code} checked={selectedTariffCode === tariff.code} disabled={tariff.available === false} onChange={() => setSelectedTariffCode(tariff.code)} />

@@ -44,7 +44,7 @@ test("server-renders the consultation landing page", async () => {
   assert.match(html, /Александр Владимирович/);
   assert.match(html, /более 20 лет/i);
   assert.match(html, /СРО аудиторов ААС/);
-  assert.match(html, /понедельник–пятница/);
+  assert.match(html, /понедельник–пятница/i);
   assert.match(html, /зашифрованном виде/);
   assert.doesNotMatch(html, /codex-preview|Building your site/);
 });
@@ -138,4 +138,12 @@ test("renders the consultant cabinet", async () => {
   assert.match(page, /Отзывы и предложения/);
   assert.match(page, /Опубликовать/);
   assert.match(page, /\/api\/consultant\/feedback/);
+  assert.match(page, /Дни и часы приёма вопросов/);
+  assert.match(page, /Сохранить расписание/);
+  assert.match(page, /serviceSchedule/);
+});
+
+test("provides the short consultant cabinet address", async () => {
+  const alias = await readFile(new URL("../app/cons/page.tsx", import.meta.url), "utf8");
+  assert.match(alias, /consultant\/page/);
 });

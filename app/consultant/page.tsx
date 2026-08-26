@@ -20,6 +20,13 @@ type CalculationEntry = { id: string; amountKopecks: number; note: string; creat
 type CabinetView = "active" | "archive";
 type IncomingAlert = { id: string; count: number };
 type FeedbackItem = { id: string; category: "review" | "suggestion"; status: "pending" | "published" | "hidden"; content: string; createdAt: string; updatedAt: string };
+type ScheduleDay = { day: string; enabled: boolean; start: string; end: string };
+
+const scheduleDayLabels: Record<string, string> = {
+  monday: "Понедельник", tuesday: "Вторник", wednesday: "Среда", thursday: "Четверг",
+  friday: "Пятница", saturday: "Суббота", sunday: "Воскресенье",
+};
+const defaultServiceSchedule: ScheduleDay[] = Object.keys(scheduleDayLabels).map((day, index) => ({ day, enabled: index < 5, start: "09:00", end: "13:00" }));
 
 export default function ConsultantCabinet() {
   const [accessKey, setAccessKey] = useState("");
@@ -39,6 +46,7 @@ export default function ConsultantCabinet() {
   const [alertsEnabled, setAlertsEnabled] = useState(false);
   const [incomingAlert, setIncomingAlert] = useState<IncomingAlert | null>(null);
   const [feedbackItems, setFeedbackItems] = useState<FeedbackItem[]>([]);
+  const [serviceSchedule, setServiceSchedule] = useState<ScheduleDay[]>(defaultServiceSchedule);
   const knownConsultationIds = useRef<Set<string>>(new Set());
   const audioContextRef = useRef<AudioContext | null>(null);
 
@@ -89,6 +97,7 @@ export default function ConsultantCabinet() {
       setCalculationTotal(calculationsResult.totalKopecks);
       setCalculationValue(String((calculationsResult.currentPriceKopecks ?? 10000) / 100));
       setUrgentTariffAvailable(calculationsResult.urgentTariffAvailable !== false);
+      if (Array.isArray(calculationsResult.serviceSchedule) && calculationsResult.serviceSchedule.length === 7) setServiceSchedule(calculationsResult.serviceSchedule);
       setFeedbackItems(Array.isArray(feedbackResult.feedback) ? feedbackResult.feedback : []);
       setAuthenticated(true);
       window.sessionStorage.setItem("ndfl-consultant-key", key);
@@ -318,6 +327,32 @@ export default function ConsultantCabinet() {
     finally { setLoading(false); }
   }
 
+  function updateScheduleDay(day: string, changes: Partial<ScheduleDay>) {
+    setServiceSchedule((current) => current.map((entry) => entry.day === day ? { ...entry, ...changes } : entry));
+  }
+
+  async function saveServiceSchedule() {
+    const invalidDay = serviceSchedule.find((entry) => entry.enabled && entry.start >= entry.end);
+    if (invalidDay) {
+      setMessage(`Проверьте время: для дня «${scheduleDayLabels[invalidDay.day]}» окончание должно быть позже начала.`);
+      return;
+    }
+    if (loading) return;
+    setLoading(true); setMessage("");
+    try {
+      const response = await fetch("/api/consultant/settings", {
+        method: "POST",
+        headers: { authorization: `Bearer ${accessKey}`, "content-type": "application/json" },
+        body: JSON.stringify({ serviceSchedule }),
+      });
+      const result = await response.json();
+      if (!response.ok || !Array.isArray(result.serviceSchedule)) throw new Error("save_failed");
+      setServiceSchedule(result.serviceSchedule);
+      setMessage("Дни и часы приёма сохранены и уже показаны посетителям на главной странице.");
+    } catch { setMessage("Не удалось сохранить расписание. Проверьте время и повторите попытку."); }
+    finally { setLoading(false); }
+  }
+
   async function deleteCalculation(id: string) {
     if (!window.confirm("Удалить эту старую тестовую сумму?")) return;
     setLoading(true); setMessage("");
@@ -444,6 +479,20 @@ export default function ConsultantCabinet() {
               <div className="consultation-index">{consultations.length === 0 ? <p>{view === "archive" ? "Архив пока пуст." : "Новых вопросов пока нет."}</p> : consultations.map((item, index) => <button type="button" className={item.id === selectedId ? "selected" : ""} key={item.id} onClick={() => setSelectedId(item.id)}><span>№ {String(index + 1).padStart(2, "0")} · {item.status === "question_submitted" ? "ждёт ответа" : item.status === "archived" ? "в архиве" : "выполнено"}</span><small>{item.tariff ? `${item.tariff.name} · ${(item.tariff.amountKopecks / 100).toLocaleString("ru-RU")} ₽ · ` : ""}{new Date(item.createdAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</small></button>)}</div>
               <p className="calculator-disclaimer">Архив открывается здесь же, без дополнительного пароля.</p>
             </div>
+
+            <section className="service-schedule-editor" aria-labelledby="schedule-title">
+              <div className="schedule-heading"><div><span className="mini-label">Расписание на сайте</span><h2 id="schedule-title">Дни и часы приёма вопросов</h2></div><p>Время московское. Выключенный день не показывается посетителям.</p></div>
+              <div className="schedule-table" role="table" aria-label="Расписание приёма вопросов">
+                <div className="schedule-row schedule-table-head" role="row"><span role="columnheader">День</span><span role="columnheader">Приём</span><span role="columnheader">С</span><span role="columnheader">До</span></div>
+                {serviceSchedule.map((entry) => <div className={`schedule-row ${entry.enabled ? "enabled" : "disabled"}`} role="row" key={entry.day}>
+                  <b role="cell">{scheduleDayLabels[entry.day]}</b>
+                  <label role="cell" className="schedule-switch"><input type="checkbox" checked={entry.enabled} onChange={(event) => updateScheduleDay(entry.day, { enabled: event.target.checked })}/><span>{entry.enabled ? "Открыт" : "Выходной"}</span></label>
+                  <label role="cell"><span className="visually-hidden">Начало приёма в {scheduleDayLabels[entry.day]}</span><input type="time" value={entry.start} disabled={!entry.enabled} onChange={(event) => updateScheduleDay(entry.day, { start: event.target.value })}/></label>
+                  <label role="cell"><span className="visually-hidden">Окончание приёма в {scheduleDayLabels[entry.day]}</span><input type="time" value={entry.end} disabled={!entry.enabled} onChange={(event) => updateScheduleDay(entry.day, { end: event.target.value })}/></label>
+                </div>)}
+              </div>
+              <button className="schedule-save" type="button" disabled={loading} onClick={() => void saveServiceSchedule()}>Сохранить расписание</button>
+            </section>
           </section>
 
           <section className="feedback-admin" aria-labelledby="feedback-admin-title"><div className="feedback-admin-heading"><div><span className="mini-label">Модерация</span><h2 id="feedback-admin-title">Отзывы и предложения</h2></div><b>{feedbackItems.filter((item) => item.status === "pending").length} ожидают проверки</b></div>{feedbackItems.length === 0 ? <p className="feedback-admin-empty">Новых сообщений посетителей пока нет.</p> : <div className="feedback-admin-list">{feedbackItems.map((item) => <article key={item.id} className={item.status}><header><select aria-label="Тип сообщения" value={item.category} onChange={(event) => editFeedback(item.id, { category: event.target.value as FeedbackItem["category"] })}><option value="review">Отзыв</option><option value="suggestion">Предложение</option></select><span>{item.status === "published" ? "Опубликовано" : item.status === "hidden" ? "Скрыто" : "Ожидает проверки"}</span><time>{new Date(item.createdAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</time></header><textarea maxLength={700} rows={5} value={item.content} onChange={(event) => editFeedback(item.id, { content: event.target.value })}/><footer><small>{item.content.length} / 700</small><button type="button" disabled={loading || item.content.trim().length < 10} onClick={() => void saveFeedback(item)}>Сохранить</button><button className="feedback-publish" type="button" disabled={loading || item.content.trim().length < 10} onClick={() => void saveFeedback(item, "published")}>Опубликовать</button><button className="feedback-hide" type="button" disabled={loading} onClick={() => void saveFeedback(item, "hidden")}>Скрыть</button><button className="feedback-delete" type="button" disabled={loading} onClick={() => void deleteFeedback(item.id)}>Удалить</button></footer></article>)}</div>}</section>
