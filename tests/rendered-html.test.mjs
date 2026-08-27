@@ -65,6 +65,19 @@ test("renders the preliminary apartment-sale tax calculator", async () => {
   assert.doesNotMatch(html, /Кадастровая стоимость на 1 января|Региональный коэффициент/);
 });
 
+test("renders the ownership-period landing page with qualified legal claims", async () => {
+  const response = await render("/srok-vladeniya");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /не выдержали/);
+  assert.match(html, /Срок начинается со дня смерти наследодателя/);
+  assert.match(html, /Для приватизации до 1 февраля 1998 года/);
+  assert.match(html, /Минимальный срок — 3 года/);
+  assert.match(html, /Новое жильё, купленное не более чем за 90 дней/);
+  assert.match(html, /Налог может оказаться равен 0 ₽/);
+  assert.match(html, /только после проверки документов/);
+});
+
 test("keeps consultation codes four digits and uses the protected payment flow", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
 
