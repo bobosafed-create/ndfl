@@ -93,8 +93,9 @@ test("landing-page back buttons force a reliable return to the home page", async
 
 test("keeps the enlarged savings menu scoped to desktop screens", async () => {
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
-  assert.match(styles, /@media\(min-width:801px\)\{\.hero-opportunities\{height:570px\}/);
+  assert.match(styles, /@media\(min-width:801px\)\{\.hero\{padding-bottom:118px\}\.hero-opportunities\{height:650px;margin-bottom:-80px\}/);
   assert.match(styles, /\.hero-savings-menu\{bottom:0;width:min\(590px,100%\)/);
+  assert.match(styles, /transform:translateX\(calc\(-50% \+ 45px\)\)/);
   assert.match(styles, /\.hero-savings-menu h2\{font-size:48px/);
 });
 
