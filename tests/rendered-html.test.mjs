@@ -91,6 +91,13 @@ test("landing-page back buttons force a reliable return to the home page", async
   assert.match(ownershipPage, /window\.location\.assign\("\/#top"\)/);
 });
 
+test("keeps the enlarged savings menu scoped to desktop screens", async () => {
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(styles, /@media\(min-width:801px\)\{\.hero-opportunities\{height:570px\}/);
+  assert.match(styles, /\.hero-savings-menu\{bottom:0;width:min\(590px,100%\)/);
+  assert.match(styles, /\.hero-savings-menu h2\{font-size:48px/);
+});
+
 test("keeps consultation codes four digits and uses the protected payment flow", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
 
