@@ -54,10 +54,13 @@ test("renders the preliminary apartment-sale tax calculator", async () => {
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /НДФЛ при продаже квартиры/);
-  assert.match(html, /Данные сделки/);
-  assert.match(html, /Особые обстоятельства/);
-  assert.match(html, /Результат/);
-  assert.match(html, /не отправляются на сервер/);
+  assert.match(html, /почти в/);
+  assert.match(html, /20 раз больше/);
+  assert.match(html, /130 000 ₽ налога/);
+  assert.match(html, /115 050 ₽ налога/);
+  assert.match(html, /Экономия — 14 950 ₽/);
+  assert.match(html, /подп\. 4 и 5 п\. 3 статьи 220 НК РФ/);
+  assert.doesNotMatch(html, /Кадастровая стоимость на 1 января|Региональный коэффициент/);
 });
 
 test("keeps consultation codes four digits and uses the protected payment flow", async () => {
