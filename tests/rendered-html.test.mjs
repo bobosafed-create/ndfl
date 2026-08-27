@@ -88,6 +88,7 @@ test("keeps consultation codes four digits and uses the protected payment flow",
   assert.doesNotMatch(page, /ВХОД[^\n]*срок/i);
   assert.match(page, /Срок будет указан после оплаты/);
   assert.match(page, /body: JSON\.stringify\(\{ tariffCode: selectedTariffCode \|\| null \}\)/);
+  assert.match(page, /ndfl-calculator-tariff/);
   assert.match(page, /setSelectedTariffCode\(""\)/);
   assert.match(page, /Выключите VPN, если он включён/);
   assert.match(page, /VPN выключен — перейти к оплате/);

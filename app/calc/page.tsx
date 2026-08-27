@@ -48,6 +48,7 @@ export default function CalculatorPage() {
       "Прошу проверить применимость правила, состав расходов и документы.",
     ].join("\n");
     window.sessionStorage.setItem("ndfl-calculator-summary", summary);
+    window.sessionStorage.setItem("ndfl-calculator-tariff", "urgent");
     window.location.assign("/#room");
   }
 

@@ -162,6 +162,11 @@ export default function Home() {
       if (Array.isArray(result?.serviceSchedule) && result.serviceSchedule.length === 7) setServiceSchedule(result.serviceSchedule);
       if (Array.isArray(result?.tariffs) && result.tariffs.length > 0) {
         setTariffs(result.tariffs);
+        const calculatorTariff = window.sessionStorage.getItem("ndfl-calculator-tariff");
+        if (calculatorTariff && result.tariffs.some((tariff: Tariff) => tariff.code === calculatorTariff && tariff.available !== false)) {
+          setSelectedTariffCode(calculatorTariff);
+          window.sessionStorage.removeItem("ndfl-calculator-tariff");
+        }
         if (result.tariffs.some((tariff: Tariff) => tariff.code === selectedTariffCode && tariff.available === false)) setSelectedTariffCode("");
       }
     }).catch(() => {});
