@@ -56,10 +56,12 @@ test("renders the preliminary apartment-sale tax calculator", async () => {
   assert.match(html, /НДФЛ при продаже квартиры/);
   assert.match(html, /почти в/);
   assert.match(html, /20 раз больше/);
-  assert.match(html, /130 000 ₽ налога/);
-  assert.match(html, /115 050 ₽ налога/);
-  assert.match(html, /Экономия — 14 950 ₽/);
+  assert.match(html, /Квартира от застройщика без отделки/);
+  assert.match(html, /Проверьте возможную экономию/);
   assert.match(html, /подп\. 4 и 5 п\. 3 статьи 220 НК РФ/);
+  assert.match(html, /Не всякий ремонт или покупка для интерьера признаются отделкой/);
+  assert.doesNotMatch(html, /Покупка — 5 млн ₽/);
+  assert.doesNotMatch(html, /130 000 ₽ налога|115 050 ₽ налога|Экономия — 14 950 ₽/);
   assert.doesNotMatch(html, /Кадастровая стоимость на 1 января|Региональный коэффициент/);
 });
 

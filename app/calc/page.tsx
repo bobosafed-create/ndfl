@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 
 const RUB = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });
 const CONSULTATION_PRICE = 750;
@@ -55,8 +56,8 @@ export default function CalculatorPage() {
   return (
     <main className="calc-page savings-page">
       <nav className="calc-nav">
-        <a className="brand" href="/" aria-label="НДФЛ.просто — на главную"><span className="brand-mark">₽</span><span>НДФЛ<span className="brand-dot">.просто</span></span></a>
-        <a className="calc-back" href="/">← На главную</a>
+        <Link className="brand" href="/" aria-label="НДФЛ.просто — на главную"><span className="brand-mark">₽</span><span>НДФЛ<span className="brand-dot">.просто</span></span></Link>
+        <Link className="calc-back" href="/">← На главную</Link>
       </nav>
 
       <header className="savings-hero">
@@ -74,21 +75,13 @@ export default function CalculatorPage() {
         </div>
       </header>
 
-      <section id="example" className="savings-example" aria-labelledby="example-heading">
-        <header><span>Наглядный пример</span><h2 id="example-heading">Квартира от застройщика без отделки</h2><p>Покупка — 5 млн ₽. Продажа через два года — 6 млн ₽.</p></header>
-        <div className="savings-story">
-          <article className="story-card user-calc"><span>01</span><small>Расчёт без проверки</small><h3>130 000 ₽ налога</h3><p>(6 000 000 − 5 000 000) × 13%</p><b>Кажется, что уменьшить налог уже нельзя</b></article>
-          <div className="story-arrow" aria-hidden="true">→</div>
-          <article className="story-card expert-finds"><span>02</span><small>Эксперт задаёт один вопрос</small><h3>Квартира была без отделки?</h3><p>В договоре с застройщиком это указано, а чеки, договоры, акты и подтверждения оплаты сохранились.</p><b>Нашлись расходы — 115 000 ₽</b></article>
-          <div className="story-arrow" aria-hidden="true">→</div>
-          <article className="story-card final-calc"><span>03</span><small>Новый предварительный расчёт</small><h3>115 050 ₽ налога</h3><p>(6 000 000 − 5 000 000 − 115 000) × 13%</p><b>Экономия — 14 950 ₽</b></article>
-        </div>
-        <div className="savings-law"><b>Почему это возможно</b><p>ФНС разъясняет: доход от продажи квартиры можно уменьшить на подтверждённые расходы по её отделке, если договор предусматривал приобретение квартиры без отделки. Для квартиры применяются подп. 2 п. 2 статьи 220 НК РФ во взаимосвязи с подп. 4 и 5 п. 3 статьи 220 НК РФ.</p><a href="https://www.nalog.gov.ru/rn40/news/tax_doc_news/6168830/" target="_blank" rel="noreferrer">Проверить разъяснение на сайте ФНС России →</a></div>
-        <p className="savings-caveat">В примере предполагается, что все 115 000 ₽ относятся к допустимым расходам и подтверждены надлежащими документами. Не всякий ремонт или покупка для интерьера признаются отделкой.</p>
-      </section>
-
-      <section className="simple-calculator" aria-labelledby="simple-calc-heading">
-        <header><span>Теперь ваши цифры</span><h2 id="simple-calc-heading">Проверьте возможную экономию</h2><p>Только три суммы и два важных условия. Остальные обстоятельства после заказа проверит консультант.</p></header>
+      <section id="example" className="simple-calculator savings-calculator-section" aria-labelledby="example-heading">
+        <header className="savings-calculator-heading">
+          <span>Наглядный пример</span>
+          <h2 id="example-heading">Квартира от застройщика без отделки</h2>
+          <h3>Проверьте возможную экономию</h3>
+          <p>Введите три суммы и ответьте на два важных вопроса. Остальные обстоятельства после заказа проверит консультант.</p>
+        </header>
         <div className="simple-calc-card">
           <div className="simple-calc-inputs">
             <label>Цена покупки, ₽<input type="number" min="0" step="10000" inputMode="numeric" value={purchasePrice} onChange={(event) => setPurchasePrice(event.target.value)} /></label>
@@ -107,6 +100,8 @@ export default function CalculatorPage() {
           </div>
           <div className="simple-disclaimer"><b>Это демонстрационный расчёт</b><p>Он не учитывает срок владения, кадастровую стоимость, региональные правила, доли собственников и другие обстоятельства. Они могут изменить итог в любую сторону.</p></div>
         </div>
+        <div className="savings-law"><b>Почему это возможно</b><p>ФНС разъясняет: доход от продажи квартиры можно уменьшить на подтверждённые расходы по её отделке, если договор предусматривал приобретение квартиры без отделки. Для квартиры применяются подп. 2 п. 2 статьи 220 НК РФ во взаимосвязи с подп. 4 и 5 п. 3 статьи 220 НК РФ.</p><a href="https://www.nalog.gov.ru/rn40/news/tax_doc_news/6168830/" target="_blank" rel="noreferrer">Проверить разъяснение на сайте ФНС России →</a></div>
+        <p className="savings-caveat">В примере предполагается, что все расходы относятся к допустимым и подтверждены надлежащими документами. Не всякий ремонт или покупка для интерьера признаются отделкой.</p>
       </section>
 
       <section className="savings-offer">
