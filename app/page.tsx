@@ -191,6 +191,11 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    const calculatorSummary = window.sessionStorage.getItem("ndfl-calculator-summary");
+    if (calculatorSummary) setQuestion((current) => current || calculatorSummary.slice(0, 1200));
+  }, []);
+
+  useEffect(() => {
     const saved = window.localStorage.getItem("ndfl-active-consultation");
     if (!saved) return;
     try {
@@ -327,6 +332,7 @@ export default function Home() {
       setAnswerReady(false);
       setStage("waiting");
       setSafeMessage("");
+      window.sessionStorage.removeItem("ndfl-calculator-summary");
     } catch {
       setSafeMessage("Не удалось сохранить вопрос. Проверьте соединение и повторите попытку.");
     } finally {
@@ -395,6 +401,7 @@ export default function Home() {
             <h1>Проблемы с НДФЛ — <em>вам сюда</em></h1>
             <p>Задайте вопрос понятным языком. Консультант подготовит ответ, а вы заберёте его из защищённого сейфа.</p>
             <a className="primary-link" href="#room">Получить консультацию <span>→</span></a>
+            <a className="hero-calculator-link" href="/calc">Предварительно рассчитать налог →</a>
             <div className="trust-row"><span>✓ Без сложных форм</span><span>✓ Код вместо регистрации</span></div>
           </div>
           <div className="people-scene" aria-label="Люди с налоговыми уведомлениями">
