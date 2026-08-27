@@ -406,14 +406,21 @@ export default function Home() {
             <h1>Проблемы с НДФЛ — <em>вам сюда</em></h1>
             <p>Задайте вопрос понятным языком. Консультант подготовит ответ, а вы заберёте его из защищённого сейфа.</p>
             <a className="primary-link" href="#room">Получить консультацию <span>→</span></a>
-            <a className="hero-calculator-link" href="/calc">Предварительно рассчитать налог →</a>
             <div className="trust-row"><span>✓ Без сложных форм</span><span>✓ Код вместо регистрации</span></div>
           </div>
-          <div className="people-scene" aria-label="Люди с налоговыми уведомлениями">
+          <div className="people-scene hero-opportunities" aria-label="Способы законно уменьшить налог">
             <div className="sun" />
             <div className="person person-left"><i className="head"/><i className="body"/><b className="paper">НАЛОГИ<br/><small>заплатите</small></b></div>
             <div className="person person-main"><i className="head"/><i className="hair"/><i className="body"/><b className="paper">НАЛОГИ<br/><small>заплатите</small></b><span className="confused">?</span></div>
             <div className="person person-right"><i className="head"/><i className="body"/><b className="paper">НАЛОГИ<br/><small>заплатите</small></b></div>
+            <aside className="hero-savings-menu">
+              <header><h2>Хотите сэкономить?</h2><p>Мы вам поможем</p><span aria-hidden="true">👇</span></header>
+              <b>Обстоятельства, о которых не всегда знают:</b>
+              <nav>
+                <a href="/calc"><i>01</i><span>Квартира в новостройке без отделки</span><strong>→</strong></a>
+                <a href="/srok-vladeniya"><i>02</i><span>Ошибка с минимальным сроком владения недвижимостью</span><strong>→</strong></a>
+              </nav>
+            </aside>
           </div>
         </section>
       </header>

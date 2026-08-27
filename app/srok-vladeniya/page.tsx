@@ -18,7 +18,7 @@ export default function OwnershipPeriodPage() {
     <main className="calc-page savings-page period-page">
       <nav className="calc-nav">
         <Link className="brand" href="/" aria-label="НДФЛ.просто — на главную"><span className="brand-mark">₽</span><span>НДФЛ<span className="brand-dot">.просто</span></span></Link>
-        <Link className="calc-back" href="/">← На главную</Link>
+        <button className="calc-back" type="button" onClick={() => window.location.assign("/#top")}>← На главную</button>
       </nav>
 
       <header className="savings-hero period-hero">

@@ -46,6 +46,12 @@ test("server-renders the consultation landing page", async () => {
   assert.match(html, /СРО аудиторов ААС/);
   assert.match(html, /понедельник–пятница/i);
   assert.match(html, /зашифрованном виде/);
+  assert.match(html, /Хотите сэкономить/);
+  assert.match(html, /Квартира в новостройке без отделки/);
+  assert.match(html, /Ошибка с минимальным сроком владения недвижимостью/);
+  assert.match(html, /href="\/calc"/);
+  assert.match(html, /href="\/srok-vladeniya"/);
+  assert.doesNotMatch(html, /Предварительно рассчитать налог/);
   assert.doesNotMatch(html, /codex-preview|Building your site/);
 });
 
@@ -76,6 +82,13 @@ test("renders the ownership-period landing page with qualified legal claims", as
   assert.match(html, /Новое жильё, купленное не более чем за 90 дней/);
   assert.match(html, /Налог может оказаться равен 0 ₽/);
   assert.match(html, /только после проверки документов/);
+});
+
+test("landing-page back buttons force a reliable return to the home page", async () => {
+  const calculatorPage = await readFile(new URL("../app/calc/page.tsx", import.meta.url), "utf8");
+  const ownershipPage = await readFile(new URL("../app/srok-vladeniya/page.tsx", import.meta.url), "utf8");
+  assert.match(calculatorPage, /window\.location\.assign\("\/#top"\)/);
+  assert.match(ownershipPage, /window\.location\.assign\("\/#top"\)/);
 });
 
 test("keeps consultation codes four digits and uses the protected payment flow", async () => {
