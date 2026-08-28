@@ -72,6 +72,15 @@ test("urgent tariff availability is controlled only from the authenticated cabin
   assert.match(router, /hasUrgentSetting/);
 });
 
+test("payment creation is stopped server-side outside the Moscow service schedule", async () => {
+  const router = await readFile(new URL("../api/router.mjs", import.meta.url), "utf8");
+  assert.match(router, /SELECT consultation_price_kopecks, urgent_tariff_available, consultation_schedule FROM site_settings/);
+  assert.match(router, /if \(!isServiceOpen\(serviceSchedule\)\)/);
+  assert.match(router, /questions_unavailable/);
+  assert.ok(router.indexOf('error: "questions_unavailable"') < router.indexOf("const consultationId = randomUUID()"));
+  assert.match(router, /questions_unavailable[\s\S]+createYooKassaPayment\(\{/);
+});
+
 test("consultant calculations require the consultant key", async () => {
   const router = await readFile(new URL("../api/router.mjs", import.meta.url), "utf8");
   assert.match(router, /consultantCalculations/);

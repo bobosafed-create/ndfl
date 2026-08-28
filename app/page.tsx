@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { reachMetrikaGoal } from "../lib/metrika";
+import { isServiceOpen } from "../lib/service-schedule.mjs";
 
 type Stage = "room" | "payment" | "question" | "waiting" | "answer";
 type Tariff = { code: string; name: string; description: string; amountKopecks: number; deadlineMinutes: number; recommended?: boolean; available?: boolean };
@@ -106,6 +107,7 @@ export default function Home() {
   const [feedbackMessage, setFeedbackMessage] = useState("");
   const [visitorStats, setVisitorStats] = useState<{ total: number; today: number } | null>(null);
   const [serviceSchedule, setServiceSchedule] = useState<ScheduleDay[]>(fallbackServiceSchedule);
+  const [scheduleNoticeVisible, setScheduleNoticeVisible] = useState(false);
 
   const selectedTariff = useMemo(() => tariffs.find((tariff) => tariff.code === selectedTariffCode) ?? null, [selectedTariffCode, tariffs]);
   const priceKopecks = selectedTariff?.amountKopecks ?? defaultPriceKopecks;
@@ -232,6 +234,12 @@ export default function Home() {
 
   async function startPayment() {
     if (busy) return;
+    if (!isServiceOpen(serviceSchedule)) {
+      setVpnNoticeVisible(false);
+      setStage("room");
+      setScheduleNoticeVisible(true);
+      return;
+    }
     setBusy(true);
     setVpnNoticeVisible(false);
     setPaymentMessage("");
@@ -255,11 +263,44 @@ export default function Home() {
       }));
       window.location.assign(result.confirmationUrl);
     } catch (error) {
-      setPaymentMessage(error instanceof Error && error.message === "urgent_tariff_unavailable"
-        ? "Срочный тариф сейчас временно недоступен. Выберите другой тариф."
-        : "Не удалось открыть защищённую страницу оплаты. Попробуйте ещё раз немного позже.");
+      if (error instanceof Error && error.message === "questions_unavailable") {
+        setStage("room");
+        setScheduleNoticeVisible(true);
+      } else {
+        setPaymentMessage(error instanceof Error && error.message === "urgent_tariff_unavailable"
+          ? "Срочный тариф сейчас временно недоступен. Выберите другой тариф."
+          : "Не удалось открыть защищённую страницу оплаты. Попробуйте ещё раз немного позже.");
+      }
       setBusy(false);
     }
+  }
+
+  async function beginPayment() {
+    if (busy) return;
+    setBusy(true);
+    let latestSchedule: ScheduleDay[] | null = null;
+    try {
+      const response = await fetch("/api/tariffs", { cache: "no-store" });
+      const result = response.ok ? await response.json() : null;
+      if (Array.isArray(result?.serviceSchedule) && result.serviceSchedule.length === 7) {
+        latestSchedule = result.serviceSchedule;
+        setServiceSchedule(result.serviceSchedule);
+      }
+    } catch {
+      latestSchedule = null;
+    }
+    setBusy(false);
+    if (!latestSchedule || !isServiceOpen(latestSchedule)) {
+      setScheduleNoticeVisible(true);
+      return;
+    }
+    setPaymentMessage("");
+    setStage("payment");
+  }
+
+  function showSchedule() {
+    setScheduleNoticeVisible(false);
+    document.getElementById("pricing-heading")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function downloadAnswer() {
@@ -475,7 +516,7 @@ export default function Home() {
           <div className="window"><span/><span/><span/><span/></div><div className="plant"><i/><b>✦</b></div>
           <div className="door-wrap">
             <div className={`door ${stage !== "room" && stage !== "payment" ? "door-active" : ""}`}><div className="door-sign">КОНСУЛЬТАНТ<small>на связи</small></div><div className="door-knob" /></div>
-            {stage === "room" && <><button className="pay-button" onClick={() => setStage("payment")}><span>ВХОД</span><strong>{priceLabel}</strong></button><p>Один письменный вопрос без регистрации</p></>}
+            {stage === "room" && <><button className="pay-button" onClick={beginPayment}><span>ВХОД</span><strong>{priceLabel}</strong></button><p>Один письменный вопрос без регистрации</p></>}
           </div>
           <div className={`safe ${answerReady ? "safe-ready" : ""}`} aria-label="Защищённый сейф с ответом"><span className="safe-label">{answerReady ? "ОТВЕТ ГОТОВ" : "Проверенный налоговым специалистом письменный ответ в срок выбранного тарифа"}</span><div className={`safe-door ${stage === "answer" ? "safe-open" : ""}`}><i className="safe-wheel" aria-hidden="true"><span /></i><b>ПЕРСОНАЛЬНЫЙ КОД</b></div><div className="safe-legs"><i/><i/></div></div><div className="rug" />
 
@@ -503,8 +544,10 @@ export default function Home() {
 
       {stage === "answer" && <article className="visitor-answer-print"><h1>Ответ консультанта по НДФЛ</h1><p className="visitor-answer-number">Консультация № {displayCode(consultationCode)}</p><div>{answer}</div><p className="visitor-answer-date">Сформировано: {new Date().toLocaleDateString("ru-RU")}</p></article>}
 
+      {scheduleNoticeVisible && <div className="schedule-closed-backdrop"><section className="payment-card schedule-closed-card" role="alertdialog" aria-modal="true" aria-labelledby="schedule-closed-title"><button className="close" type="button" onClick={() => setScheduleNoticeVisible(false)} aria-label="Закрыть">×</button><span className="schedule-closed-icon" aria-hidden="true">◷</span><small>Приём вопросов закрыт</small><h3 id="schedule-closed-title">В настоящее время вопросы недоступны</h3><p>Посмотрите расписание на сайте. Приносим извинения за неудобства.</p><button className="action-button" type="button" onClick={showSchedule}>Посмотреть расписание</button></section></div>}
+
       <footer><div className="brand"><span className="brand-mark">₽</span><span>НДФЛ<span className="brand-dot">.просто</span></span></div><nav aria-label="Правовая информация"><a href="/legal#offer">Оферта</a><a href="/legal#privacy">Конфиденциальность</a><a href="/legal#refunds">Возврат</a><a href="/legal#contacts">Контакты</a></nav><a href="#top">Наверх ↑</a></footer>
-      {stage === "room" && <button className="mobile-question-cta" type="button" onClick={() => setStage("payment")}>Задать вопрос · {priceLabel}</button>}
+      {stage === "room" && <button className="mobile-question-cta" type="button" onClick={beginPayment}>Задать вопрос · {priceLabel}</button>}
     </main>
   );
 }

@@ -17,6 +17,7 @@ import {
   aiConfigured,
 } from "../lib/ai.mjs";
 import { CONSULTATION_TARIFFS, resolveTariff } from "../lib/tariffs.mjs";
+import { isServiceOpen } from "../lib/service-schedule.mjs";
 
 const rateLimits = new Map();
 const ANSWER_NOTICE = "Пометка консультанта: Ответ составлен по предоставленным данным. Если у вас имеются дополнительные обезличенные сведения, способные повлиять на вывод, оформите новый вопрос в том же порядке, что и первоначальный.";
@@ -259,15 +260,20 @@ async function createPayment(request) {
   if (!database) return json({ error: "service_unavailable" }, 503);
   const input = await body(request);
 
+  const priceResult = await database.query(
+    "SELECT consultation_price_kopecks, urgent_tariff_available, consultation_schedule FROM site_settings WHERE singleton = true",
+  );
+  const serviceSchedule = normalizeServiceSchedule(priceResult.rows[0]?.consultation_schedule);
+  if (!isServiceOpen(serviceSchedule)) {
+    return json({ error: "questions_unavailable" }, 409);
+  }
+
   const consultationId = randomUUID();
   const paymentId = randomUUID();
   const idempotencyKey = randomUUID();
   const browserToken = randomToken();
   const code = String(randomInt(1000, 10000));
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-  const priceResult = await database.query(
-    "SELECT consultation_price_kopecks, urgent_tariff_available FROM site_settings WHERE singleton = true",
-  );
   const defaultAmountKopecks = priceResult.rows[0]?.consultation_price_kopecks ?? 10000;
   const requestedTariffCode = typeof input.tariffCode === "string" ? input.tariffCode.trim() : "";
   if (requestedTariffCode && !CONSULTATION_TARIFFS.some((item) => item.code === requestedTariffCode)) {

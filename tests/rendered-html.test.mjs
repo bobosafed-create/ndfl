@@ -119,7 +119,12 @@ test("keeps consultation codes four digits and uses the protected payment flow",
   assert.doesNotMatch(page, /consultant-male-v3\.png/);
   assert.doesNotMatch(page, /Ваш консультант<\/span><strong>Анна/);
   assert.match(page, /className="mobile-question-cta"/);
-  assert.match(page, /mobile-question-cta" type="button" onClick=\{\(\) => setStage\("payment"\)\}/);
+  assert.match(page, /mobile-question-cta" type="button" onClick=\{beginPayment\}/);
+  assert.match(page, /pay-button" onClick=\{beginPayment\}/);
+  assert.match(page, /В настоящее время вопросы недоступны/);
+  assert.match(page, /Посмотрите расписание на сайте\. Приносим извинения за неудобства\./);
+  assert.match(page, /isServiceOpen\(serviceSchedule\)/);
+  assert.match(page, /questions_unavailable/);
   assert.match(page, /<span>ВХОД<\/span><strong>\{priceLabel\}<\/strong>/);
   assert.doesNotMatch(page, /ВХОД[^\n]*срок/i);
   assert.match(page, /Срок будет указан после оплаты/);
