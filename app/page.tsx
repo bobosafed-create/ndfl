@@ -6,7 +6,7 @@ import { isServiceOpen } from "../lib/service-schedule.mjs";
 
 type Stage = "room" | "payment" | "question" | "waiting" | "answer";
 type Tariff = { code: string; name: string; description: string; amountKopecks: number; deadlineMinutes: number; recommended?: boolean; available?: boolean };
-type PublicFeedback = { id: string; category: "review" | "suggestion"; content: string; createdAt: string };
+type UrgentAddon = { code: string; name: string; description: string; amountKopecks: number; deadlineMinutes: number; available?: boolean };
 type ScheduleDay = { day: string; enabled: boolean; start: string; end: string };
 
 const scheduleDayLabels: Record<string, string> = {
@@ -17,11 +17,23 @@ const scheduleDayLabels: Record<string, string> = {
 const fallbackServiceSchedule: ScheduleDay[] = Object.keys(scheduleDayLabels).map((day, index) => ({ day, enabled: index < 5, start: "09:00", end: "13:00" }));
 
 const fallbackTariffs: Tariff[] = [
-  { code: "basic", name: "Базовый", description: "Один простой вопрос без расчётов, краткий письменный ответ", amountKopecks: 20000, deadlineMinutes: 240 },
-  { code: "standard", name: "Стандартный", description: "Подробный ответ с пояснением и рекомендуемыми действиями", amountKopecks: 40000, deadlineMinutes: 240, recommended: true },
-  { code: "urgent", name: "Срочный", description: "Стандартный письменный ответ с приоритетной обработкой", amountKopecks: 75000, deadlineMinutes: 60 },
-  { code: "complex", name: "Сложный случай", description: "Разбор ситуации с налоговыми расчётами и пояснениями", amountKopecks: 99000, deadlineMinutes: 480 },
+  { code: "situation-check", name: "Проверка ситуации", description: "Персональная проверка НДФЛ, обязанности подать 3-НДФЛ и возможных способов уменьшить налог или получить возврат", amountKopecks: 39000, deadlineMinutes: 240, recommended: true },
+  { code: "detailed-review", name: "Расчёт и подробный разбор", description: "Расчёт налога или возврата, нормативные основания и подробные рекомендации по следующим действиям", amountKopecks: 99000, deadlineMinutes: 480 },
 ];
+
+const fallbackUrgentAddon: UrgentAddon = { code: "urgent", name: "Срочно", description: "Письменный результат в течение 2 часов", amountKopecks: 30000, deadlineMinutes: 120, available: true };
+
+const situations = [
+  { slug: "prodazha-kvartiry", title: "Продал квартиру", text: "Срок владения, расходы, вычет и обязанность подать 3-НДФЛ.", path: "/prodazha-kvartiry/", published: false },
+  { slug: "prodazha-avtomobilya", title: "Продал автомобиль", text: "Нужно ли декларировать доход и можно ли учесть стоимость покупки.", path: "/prodazha-avtomobilya/", published: false },
+  { slug: "pokupka-kvartiry", title: "Купил квартиру", text: "Имущественный вычет и возврат НДФЛ, включая ипотечные проценты.", path: "/vychet-pokupka-kvartiry/", published: false },
+  { slug: "lechenie", title: "Оплачивал лечение", text: "Социальный вычет за лечение, лекарства и медицинские услуги.", path: "/vychet-lechenie/", published: false },
+  { slug: "obuchenie", title: "Оплачивал обучение", text: "Возврат НДФЛ за своё обучение или обучение близких.", path: "/vychet-obuchenie/", published: false },
+  { slug: "vklady", title: "Получил проценты по вкладам", text: "Проверка необлагаемой суммы и налога по сведениям банков.", path: "/nalog-vklady/", published: false },
+  { slug: "arenda", title: "Сдавал имущество", text: "НДФЛ с аренды, декларация и подходящий порядок уплаты.", path: "/arenda/", published: false },
+  { slug: "investitsii", title: "Акции, дивиденды, инвестиции", text: "Доходы у брокера, дивиденды, убытки и инвестиционные вычеты.", path: "/investitsii/", published: false },
+  { slug: "drugaya-situatsiya", title: "Другая ситуация", text: "Разберём нестандартный доход, вычет или уведомление налоговой.", path: "/drugaya-situatsiya/", published: false },
+] as const;
 
 function tariffDeadline(minutes: number) {
   if (minutes === 60) return "Ответ в течение 1 часа";
@@ -94,25 +106,22 @@ export default function Home() {
   const [answerPage, setAnswerPage] = useState(0);
   const [busy, setBusy] = useState(false);
   const [paymentMessage, setPaymentMessage] = useState("");
-  const [defaultPriceKopecks, setDefaultPriceKopecks] = useState(10000);
   const [tariffs, setTariffs] = useState<Tariff[]>(fallbackTariffs);
-  const [selectedTariffCode, setSelectedTariffCode] = useState("");
+  const [selectedTariffCode, setSelectedTariffCode] = useState("situation-check");
+  const [urgentAddon, setUrgentAddon] = useState<UrgentAddon>(fallbackUrgentAddon);
+  const [urgentSelected, setUrgentSelected] = useState(false);
+  const [diagnosticSituation, setDiagnosticSituation] = useState("");
+  const [diagnosticComplete, setDiagnosticComplete] = useState(false);
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
   const [vpnNoticeVisible, setVpnNoticeVisible] = useState(false);
-  const [feedback, setFeedback] = useState<PublicFeedback[]>([]);
-  const [feedbackFormVisible, setFeedbackFormVisible] = useState(false);
-  const [feedbackCategory, setFeedbackCategory] = useState<"review" | "suggestion">("review");
-  const [feedbackText, setFeedbackText] = useState("");
-  const [feedbackPrivacyAccepted, setFeedbackPrivacyAccepted] = useState(false);
-  const [feedbackMessage, setFeedbackMessage] = useState("");
   const [visitorStats, setVisitorStats] = useState<{ total: number; today: number } | null>(null);
   const [serviceSchedule, setServiceSchedule] = useState<ScheduleDay[]>(fallbackServiceSchedule);
   const [scheduleNoticeVisible, setScheduleNoticeVisible] = useState(false);
 
   const selectedTariff = useMemo(() => tariffs.find((tariff) => tariff.code === selectedTariffCode) ?? null, [selectedTariffCode, tariffs]);
-  const priceKopecks = selectedTariff?.amountKopecks ?? defaultPriceKopecks;
+  const priceKopecks = (selectedTariff?.amountKopecks ?? fallbackTariffs[0].amountKopecks) + (urgentSelected ? urgentAddon.amountKopecks : 0);
   const priceLabel = useMemo(() => `${(priceKopecks / 100).toLocaleString("ru-RU")} ₽`, [priceKopecks]);
-  const selectedDeadline = selectedTariff ? tariffDeadline(selectedTariff.deadlineMinutes) : "Срок будет указан после оплаты";
+  const selectedDeadline = urgentSelected ? tariffDeadline(urgentAddon.deadlineMinutes) : selectedTariff ? tariffDeadline(selectedTariff.deadlineMinutes) : tariffDeadline(fallbackTariffs[0].deadlineMinutes);
   const answerPages = useMemo(() => paginateAnswer(answer), [answer]);
   const serviceScheduleText = useMemo(() => formatServiceSchedule(serviceSchedule), [serviceSchedule]);
 
@@ -141,7 +150,8 @@ export default function Home() {
         window.localStorage.setItem(purchaseGoalKey, "1");
       }
       setPaymentMessage("");
-      setSelectedTariffCode("");
+      setSelectedTariffCode("situation-check");
+      setUrgentSelected(false);
       setStage("question");
     } else if (result.status === "question_submitted" || result.status === "answered") {
       setAnswerReady(result.status === "answered");
@@ -160,25 +170,25 @@ export default function Home() {
 
   useEffect(() => {
     fetch("/api/tariffs").then((response) => response.ok ? response.json() : null).then((result) => {
-      if (Number.isInteger(result?.defaultAmountKopecks)) setDefaultPriceKopecks(result.defaultAmountKopecks);
       if (Array.isArray(result?.serviceSchedule) && result.serviceSchedule.length === 7) setServiceSchedule(result.serviceSchedule);
+      if (result?.urgentAddon && Number.isInteger(result.urgentAddon.amountKopecks)) setUrgentAddon(result.urgentAddon);
       if (Array.isArray(result?.tariffs) && result.tariffs.length > 0) {
         setTariffs(result.tariffs);
         const calculatorTariff = window.sessionStorage.getItem("ndfl-calculator-tariff");
-        if (calculatorTariff && result.tariffs.some((tariff: Tariff) => tariff.code === calculatorTariff && tariff.available !== false)) {
+        if (calculatorTariff === "urgent") {
+          setSelectedTariffCode("detailed-review");
+          setUrgentSelected(true);
+          window.sessionStorage.removeItem("ndfl-calculator-tariff");
+        } else if (calculatorTariff && result.tariffs.some((tariff: Tariff) => tariff.code === calculatorTariff && tariff.available !== false)) {
           setSelectedTariffCode(calculatorTariff);
           window.sessionStorage.removeItem("ndfl-calculator-tariff");
         }
-        if (result.tariffs.some((tariff: Tariff) => tariff.code === selectedTariffCode && tariff.available === false)) setSelectedTariffCode("");
+        if (result.tariffs.some((tariff: Tariff) => tariff.code === selectedTariffCode && tariff.available === false)) setSelectedTariffCode("situation-check");
       }
     }).catch(() => {});
-  }, [selectedTariffCode]);
+  }, []);
 
   useEffect(() => {
-    fetch("/api/feedback").then((response) => response.ok ? response.json() : null).then((result) => {
-      if (Array.isArray(result?.feedback)) setFeedback(result.feedback);
-    }).catch(() => {});
-
     const moscowDay = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Moscow", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
     const visitKey = `ndfl-visit-${moscowDay}`;
     let visitRegistration: Promise<unknown> = Promise.resolve();
@@ -247,7 +257,7 @@ export default function Home() {
       const response = await fetch("/api/payments/create", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ tariffCode: selectedTariffCode || null }),
+        body: JSON.stringify({ tariffCode: selectedTariffCode, urgent: urgentSelected }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "payment_failed");
@@ -268,7 +278,7 @@ export default function Home() {
         setScheduleNoticeVisible(true);
       } else {
         setPaymentMessage(error instanceof Error && error.message === "urgent_tariff_unavailable"
-          ? "Срочный тариф сейчас временно недоступен. Выберите другой тариф."
+          ? "Допопция «Срочно» сейчас временно недоступна. Оформите обычный срок или повторите позже."
           : "Не удалось открыть защищённую страницу оплаты. Попробуйте ещё раз немного позже.");
       }
       setBusy(false);
@@ -311,27 +321,6 @@ export default function Home() {
     link.download = `Ответ-НДФЛ-${displayCode(consultationCode)}.txt`;
     link.click();
     URL.revokeObjectURL(url);
-  }
-
-  async function submitFeedback() {
-    if (feedbackText.trim().length < 10 || feedbackText.trim().length > 700 || !feedbackPrivacyAccepted || busy) return;
-    setBusy(true);
-    setFeedbackMessage("");
-    try {
-      const response = await fetch("/api/feedback", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ category: feedbackCategory, content: feedbackText.trim(), website: "" }),
-      });
-      if (!response.ok) throw new Error("feedback_failed");
-      setFeedbackText("");
-      setFeedbackPrivacyAccepted(false);
-      setFeedbackMessage("Спасибо! Сообщение отправлено консультанту и появится на сайте после проверки.");
-    } catch {
-      setFeedbackMessage("Не удалось отправить сообщение. Попробуйте ещё раз немного позже.");
-    } finally {
-      setBusy(false);
-    }
   }
 
   function displayCode(value: string) {
@@ -429,7 +418,8 @@ export default function Home() {
     setAnswer("");
     setAnswerPage(0);
     setAnswerDueAt(null);
-    setSelectedTariffCode("");
+    setSelectedTariffCode("situation-check");
+    setUrgentSelected(false);
     setVpnNoticeVisible(false);
   }
 
@@ -437,34 +427,60 @@ export default function Home() {
     <main>
       <header className="hero">
         <nav className="nav">
-          <a className="brand" href="#top" aria-label="НДФЛ.просто — наверх"><span className="brand-mark">₽</span><span>НДФЛ<span className="brand-dot">.просто</span></span></a>
-          <a className="nav-link" href="#room">Как это работает <span>↓</span></a>
+          <a className="brand" href="#top" aria-label="НДФЛ.просто — наверх"><span className="brand-mark">₽</span><span>НДФЛ<span className="brand-dot">.просто</span><small>Расчёт · Проверка · Налоговые вычеты · Консультация</small></span></a>
+          <a className="nav-link" href="#diagnostic">Бесплатная проверка <span>↓</span></a>
           {visitorStats && <aside className="consultant-visitor-counter" aria-label="Счётчик посещений, доступный консультанту"><small>Посетители</small><b>Всего: {visitorStats.total.toLocaleString("ru-RU")}</b><span>Сегодня: {visitorStats.today.toLocaleString("ru-RU")}</span></aside>}
         </nav>
-        <section id="top" className="hero-grid">
-          <div className="hero-copy">
-            <span className="eyebrow">Разберёмся без паники</span>
-            <h1>Проблемы с НДФЛ — <em>вам сюда</em></h1>
-            <p>Задайте вопрос понятным языком. Консультант подготовит ответ, а вы заберёте его из защищённого сейфа.</p>
-            <a className="primary-link" href="#room">Получить консультацию <span>→</span></a>
-            <div className="trust-row"><span>✓ Без сложных форм</span><span>✓ Код вместо регистрации</span></div>
+        <section id="top" className="hero-grid ndfl-hero-grid">
+          <div className="hero-copy ndfl-hero-copy">
+            <span className="eyebrow">Персональная проверка вашей ситуации</span>
+            <h1>Проверьте свой <em>НДФЛ</em></h1>
+            <p>Узнайте, правильно ли рассчитан налог, нужно ли подавать 3-НДФЛ, можно ли законно заплатить меньше или вернуть часть уплаченного НДФЛ.</p>
+            <div className="hero-actions"><a className="primary-link" href="#diagnostic">Проверить мою ситуацию <span>→</span></a><a className="secondary-link" href="#pricing-heading">Задать вопрос специалисту</a></div>
+            <div className="trust-row"><span>✓ Без регистрации</span><span>✓ Без паспорта и ИНН</span><span>✓ Письменный результат</span></div>
           </div>
-          <div className="people-scene hero-opportunities" aria-label="Способы законно уменьшить налог">
-            <div className="sun" />
-            <div className="person person-left"><i className="head"/><i className="body"/><b className="paper">НАЛОГИ<br/><small>заплатите</small></b></div>
-            <div className="person person-main"><i className="head"/><i className="hair"/><i className="body"/><b className="paper">НАЛОГИ<br/><small>заплатите</small></b><span className="confused">?</span></div>
-            <div className="person person-right"><i className="head"/><i className="body"/><b className="paper">НАЛОГИ<br/><small>заплатите</small></b></div>
-            <aside className="hero-savings-menu">
-              <header><h2>Хотите сэкономить?</h2><p>Мы вам поможем</p><span aria-hidden="true">👇</span></header>
-              <b>Обстоятельства, о которых не всегда знают:</b>
-              <nav>
-                <a href="/calc"><i>01</i><span>Квартира в новостройке без отделки</span><strong>→</strong></a>
-                <a href="/srok-vladeniya"><i>02</i><span>Ошибка с минимальным сроком владения недвижимостью</span><strong>→</strong></a>
-              </nav>
-            </aside>
+          <div className="hero-check-card" aria-label="Что проверит специалист">
+            <span>В персональном разборе</span>
+            <h2>Не только сумма налога</h2>
+            <ul><li>обязанность подать 3-НДФЛ;</li><li>право на вычеты и возврат;</li><li>законные способы уменьшить налог;</li><li>важные сроки и следующие действия.</li></ul>
+            <strong>Расчёт · объяснение · рекомендации</strong>
           </div>
         </section>
       </header>
+
+      <section className="situations-section" aria-labelledby="situations-heading">
+        <div className="content-heading"><span>Что у вас произошло?</span><h2 id="situations-heading">Выберите свою ситуацию</h2><p>Не нужно заранее разбираться в Налоговом кодексе. Выберите тему — сейчас карточка откроет бесплатную первичную диагностику, а позже сможет вести на отдельную тематическую страницу.</p></div>
+        <div className="situations-grid">
+          {situations.map((item, index) => <a key={item.slug} href={item.published ? item.path : "#diagnostic"} data-future-path={item.path} onClick={() => { setDiagnosticSituation(item.slug); setDiagnosticComplete(false); }}><span>{String(index + 1).padStart(2, "0")}</span><h3>{item.title}</h3><p>{item.text}</p><b>Проверить ситуацию →</b></a>)}
+        </div>
+      </section>
+
+      <section id="diagnostic" className="diagnostic-section" aria-labelledby="diagnostic-heading">
+        <div><span className="mini-label">Бесплатная первичная диагностика</span><h2 id="diagnostic-heading">Не уверены, что вам вообще нужна консультация?</h2><p>Укажите тип ситуации. Мы бесплатно подскажем, что в ней обычно требуется проверить. Это предварительная ориентация, а не индивидуальная налоговая консультация.</p></div>
+        <div className="diagnostic-card">
+          <label htmlFor="diagnostic-situation">Что произошло?</label>
+          <select id="diagnostic-situation" value={diagnosticSituation} onChange={(event) => { setDiagnosticSituation(event.target.value); setDiagnosticComplete(false); }}><option value="">Выберите ситуацию</option>{situations.map((item) => <option value={item.slug} key={item.slug}>{item.title}</option>)}</select>
+          <button className="action-button" type="button" disabled={!diagnosticSituation} onClick={() => setDiagnosticComplete(true)}>Начать бесплатную проверку</button>
+          {diagnosticComplete && <div className="diagnostic-result" role="status"><b>Что стоит проверить</b><p>Для ситуации «{situations.find((item) => item.slug === diagnosticSituation)?.title}» важны даты, суммы, документы и обстоятельства получения дохода или права на вычет. Если вывод влияет на платёж или возврат, выберите персональную проверку ниже.</p><a href="#pricing-heading">Выбрать формат разбора →</a></div>}
+        </div>
+      </section>
+
+      <section className="circumstances-section" aria-labelledby="circumstances-heading">
+        <div className="content-heading"><span>Налог зависит от деталей</span><h2 id="circumstances-heading">На НДФЛ влияют обстоятельства, о которых легко не знать</h2><p>Дата и способ приобретения имущества, подтверждённые расходы, семейный статус, перенос убытков, уже использованные вычеты и другие детали могут изменить результат.</p></div>
+        <div className="circumstances-accent">Задача сервиса — не просто посчитать налог, а проверить, не переплачиваете ли вы и не упускаете ли право на возврат.</div>
+      </section>
+
+      <section className="deliverables-section" aria-labelledby="deliverables-heading">
+        <div className="content-heading"><span>Результат консультации</span><h2 id="deliverables-heading">Что вы получите</h2></div>
+        <div className="deliverables-grid">{[
+          ["Персональный анализ", "Проверка именно ваших обстоятельств, а не общий ответ из справочника."],
+          ["Расчёт", "Сумма налога или возможного возврата, когда исходных данных достаточно."],
+          ["Простое объяснение", "Понятный вывод без перегруженной налоговой терминологии."],
+          ["Нормативные основания", "Ссылки на применимые нормы и официальные разъяснения."],
+          ["Рекомендации", "Что сделать дальше и какие документы проверить или подготовить."],
+          ["Письменный результат", "Ответ останется в защищённом сейфе и доступен по вашему коду."],
+        ].map(([title, text]) => <article key={title}><i>✓</i><h3>{title}</h3><p>{text}</p></article>)}</div>
+      </section>
 
       <section className="guide">
         <div className="consultant-portrait">
@@ -474,11 +490,11 @@ export default function Home() {
           </div>
           <div className="consultant-label"><span>Налоговый консультант</span><strong>Александр Владимирович</strong><small><i /> Самозанятый</small></div>
         </div>
-        <div className="guide-copy consultant-profile"><span className="mini-label">Ответ проверяет специалист</span><h2>Александр<br/><span>Владимирович</span></h2><p className="profile-lead">Финансовый и налоговый аналитик с опытом более 20 лет. Высшее экономическое образование.</p><dl className="consultant-facts"><div><dt>Статус</dt><dd>Самозанятый · ИНН 231500470459</dd></div><div><dt>Профессиональный опыт</dt><dd>Аудитор, финансовый аналитик, налоговый аналитик</dd></div><div><dt>Специализация</dt><dd>Финансовый анализ, внутренний и внешний аудит, налоговое планирование, управленческий учёт, финансовое консультирование</dd></div><div><dt>Профессиональное членство</dt><dd>СРО аудиторов ААС</dd></div></dl><p className="consultant-sectors"><b>Отраслевой опыт:</b> цементная отрасль, портовые структуры, агентирование и перевалка грузов, железная дорога, оптовая торговля, гостиничный и строительный бизнес.</p></div>
+        <div className="guide-copy consultant-profile"><span className="mini-label">Ответ проверяет специалист</span><h2>Александр<br/><span>Владимирович</span></h2><p className="profile-lead">Финансовый и налоговый аналитик, аудитор. Более 20 лет профессионального опыта. Высшее экономическое образование.</p><blockquote>Пользователь может оставаться анонимным. Консультант — нет.</blockquote><dl className="consultant-facts"><div><dt>Статус</dt><dd>Самозанятый · ИНН 231500470459</dd></div><div><dt>Профессиональный опыт</dt><dd>Аудитор, финансовый аналитик, налоговый аналитик</dd></div><div><dt>Специализация</dt><dd>Финансовый анализ, внутренний и внешний аудит, налоговое планирование, управленческий учёт, финансовое консультирование</dd></div><div><dt>Профессиональное членство</dt><dd>СРО аудиторов ААС</dd></div></dl><p className="consultant-sectors"><b>Отраслевой опыт:</b> цементная отрасль, портовые структуры, агентирование и перевалка грузов, железная дорога, оптовая торговля, гостиничный и строительный бизнес.</p></div>
       </section>
 
       <section className="qa-section" aria-labelledby="qa-heading">
-        <div className="qa-heading"><span>Примеры консультаций</span><h2 id="qa-heading">Задаваемые вопросы<br/>и наши ответы</h2><p>Краткие разборы типичных ситуаций. Откройте интересующий вопрос.</p></div>
+        <div className="qa-heading"><span>Короткие примеры</span><h2 id="qa-heading">Как обстоятельства меняют результат</h2><p>Учебные примеры типичных ситуаций. Они не являются отзывами или персональной консультацией.</p></div>
         <div className="qa-list">
           <details>
             <summary><span>01</span>Квартиру подарил дальний родственник. Когда возникает налог и как уменьшить его при продаже?</summary>
@@ -497,8 +513,13 @@ export default function Home() {
         <div className="dotted-arrow">↓</div>
       </section>
 
+      <section className="steps-section" aria-labelledby="steps-heading">
+        <div className="content-heading"><span>Пять понятных шагов</span><h2 id="steps-heading">Как это работает</h2></div>
+        <ol className="steps-grid"><li><b>01</b><h3>Опишите ситуацию</h3><p>Без ФИО, телефона, паспорта и ИНН.</p></li><li><b>02</b><h3>Выберите формат</h3><p>Проверка ситуации или подробный расчёт.</p></li><li><b>03</b><h3>Оплатите через ЮKassa</h3><p>Данные банковской карты не попадают на сайт.</p></li><li><b>04</b><h3>Получите код</h3><p>Четыре цифры откроют ваш защищённый сейф.</p></li><li><b>05</b><h3>Получите письменный ответ</h3><p>Анализ, расчёт и рекомендации в выбранный срок.</p></li></ol>
+      </section>
+
       <section className="pricing-section" aria-labelledby="pricing-heading">
-        <div className="pricing-heading"><span>Стоимость услуг</span><h2 id="pricing-heading">Выберите подходящий тариф</h2><p>Выбор действует только для этой консультации. Если тариф не выбран, применяется текущая цена консультанта — <strong>{(defaultPriceKopecks / 100).toLocaleString("ru-RU")} ₽</strong>.</p><div className="service-hours"><b>Приём вопросов</b><strong>{serviceScheduleText}</strong><em>Время московское</em><span>Срочный тариф в отдельные часы может быть недоступен.</span></div></div>
+        <div className="pricing-heading"><span>Два формата работы</span><h2 id="pricing-heading">Выберите глубину разбора</h2><p>Оба тарифа включают персональный письменный результат. Стоимость фиксируется до перехода на страницу ЮKassa.</p><div className="service-hours"><b>Приём вопросов</b><strong>{serviceScheduleText}</strong><em>Время московское</em><span>Допопция «Срочно» в отдельные часы может быть недоступна.</span></div></div>
         <div className="tariff-grid" role="radiogroup" aria-label="Тариф консультации">
           {tariffs.map((tariff) => <label className={`tariff-card ${selectedTariffCode === tariff.code ? "selected" : ""} ${tariff.available === false ? "unavailable" : ""}`} key={tariff.code}>
             <input type="radio" name="consultation-tariff" value={tariff.code} checked={selectedTariffCode === tariff.code} disabled={tariff.available === false} onChange={() => setSelectedTariffCode(tariff.code)} />
@@ -507,22 +528,27 @@ export default function Home() {
             <strong>{tariff.name}</strong><em>{(tariff.amountKopecks / 100).toLocaleString("ru-RU")} ₽</em><small>{tariffDeadline(tariff.deadlineMinutes)}</small><p>{tariff.description}</p>
           </label>)}
         </div>
-        <div className="tariff-summary" aria-live="polite"><div><span>{selectedTariff ? `Выбран тариф «${selectedTariff.name}»` : "Тариф пока не выбран"}</span><strong>К оплате: {priceLabel}</strong><small>{selectedTariff ? selectedDeadline : "Действует цена, установленная консультантом"}</small></div><div>{selectedTariff && <button className="tariff-reset" type="button" onClick={() => setSelectedTariffCode("")}>Сбросить выбор</button>}<a href="#room">Перейти к консультации →</a></div></div>
+        <label className={`urgent-option ${urgentSelected ? "selected" : ""} ${urgentAddon.available === false ? "unavailable" : ""}`}><input type="checkbox" checked={urgentSelected} disabled={urgentAddon.available === false} onChange={(event) => setUrgentSelected(event.target.checked)} /><span><b>Срочно +{(urgentAddon.amountKopecks / 100).toLocaleString("ru-RU")} ₽</b><small>Письменный результат в течение 2 часов. Это допопция к выбранному тарифу.</small></span>{urgentAddon.available === false && <em>Сейчас недоступно</em>}</label>
+        <div className="tariff-summary" aria-live="polite"><div><span>Выбран тариф «{selectedTariff?.name ?? fallbackTariffs[0].name}»{urgentSelected ? " с допопцией «Срочно»" : ""}</span><strong>К оплате: {priceLabel}</strong><small>{selectedDeadline}</small></div><div><a href="#room">Перейти к консультации →</a></div></div>
       </section>
 
+      <section className="trust-section" aria-labelledby="trust-heading"><div className="content-heading"><span>Почему сервису можно доверять</span><h2 id="trust-heading">Проверяемый специалист и прозрачный процесс</h2></div><div className="trust-grid"><article><h3>Оплата через ЮKassa</h3><p>Платёж проходит на защищённой странице платёжного сервиса.</p></article><article><h3>Письменный результат</h3><p>Вы получаете вывод, расчёт и рекомендации, к которым можно вернуться.</p></article><article><h3>Известен исполнитель</h3><p>На странице указаны имя, статус, ИНН и профессиональный опыт консультанта.</p></article><article><h3>Понятная стоимость</h3><p>Два тарифа и одна допопция без скрытой платы за «вход».</p></article></div></section>
+
+      <section className="privacy-section" aria-labelledby="privacy-heading"><div><span className="mini-label">Конфиденциальность</span><h2 id="privacy-heading">Можно обойтись без регистрации и персональных данных</h2><p>Не указывайте ФИО, телефон, e-mail, паспорт, ИНН, адрес и номера документов. После оплаты сервис выдаёт персональный четырёхзначный код. Для открытия ответа нужны этот браузер и код.</p><a href="/legal#privacy">Подробнее об условиях конфиденциальности →</a></div><div className="privacy-code" aria-hidden="true"><span>Ваш код</span><strong>••••</strong><small>Храните его у себя</small></div></section>
+
       <section id="room" className="room-section">
-        <div className="section-heading"><span>Комната консультации № 1</span><h2>Один вопрос — один понятный ответ</h2></div>
+        <div className="section-heading"><span>Защищённая консультация</span><h2>Персональный разбор, расчёт и рекомендации</h2></div>
         <div className={`room stage-${stage}`}>
           <div className="window"><span/><span/><span/><span/></div><div className="plant"><i/><b>✦</b></div>
           <div className="door-wrap">
             <div className={`door ${stage !== "room" && stage !== "payment" ? "door-active" : ""}`}><div className="door-sign">КОНСУЛЬТАНТ<small>на связи</small></div><div className="door-knob" /></div>
-            {stage === "room" && <><button className="pay-button" onClick={beginPayment}><span>ВХОД</span><strong>{priceLabel}</strong></button><p>Один письменный вопрос без регистрации</p></>}
+            {stage === "room" && <><button className="pay-button" onClick={beginPayment}><span>НАЧАТЬ</span><strong>{priceLabel}</strong></button><p>Опишите одну налоговую ситуацию без регистрации</p></>}
           </div>
           <div className={`safe ${answerReady ? "safe-ready" : ""}`} aria-label="Защищённый сейф с ответом"><span className="safe-label">{answerReady ? "ОТВЕТ ГОТОВ" : "Проверенный налоговым специалистом письменный ответ в срок выбранного тарифа"}</span><div className={`safe-door ${stage === "answer" ? "safe-open" : ""}`}><i className="safe-wheel" aria-hidden="true"><span /></i><b>ПЕРСОНАЛЬНЫЙ КОД</b></div><div className="safe-legs"><i/><i/></div></div><div className="rug" />
 
-          {stage === "payment" && <div className="modal-backdrop">{vpnNoticeVisible ? <section className="payment-card vpn-notice-card" role="alertdialog" aria-modal="true" aria-labelledby="vpn-title"><button className="close" onClick={() => setVpnNoticeVisible(false)} aria-label="Вернуться">×</button><span className="vpn-icon" aria-hidden="true">!</span><small>Перед переходом к оплате</small><h3 id="vpn-title">Выключите VPN, если он включён</h3><p className="vpn-warning">Иначе защищённая страница оплаты может не открыться или платёж может быть отклонён.</p><button className="action-button" disabled={busy} onClick={startPayment}>{busy ? "Открываем оплату…" : "VPN выключен — перейти к оплате"}</button><button className="vpn-back" type="button" onClick={() => setVpnNoticeVisible(false)}>Вернуться назад</button></section> : <section className="payment-card" role="dialog" aria-modal="true" aria-labelledby="payment-title"><button className="close" onClick={() => setStage("room")} aria-label="Закрыть">×</button><span className="payment-icon">₽</span><small>Защищённая оплата через ЮKassa</small><h3 id="payment-title">{selectedTariff ? `Тариф «${selectedTariff.name}»` : "Консультация по НДФЛ"}</h3><p className="payment-deadline">{selectedDeadline}</p><div className="price-row"><span>К оплате</span><strong>{priceLabel}</strong></div><button className="action-button" disabled={busy || Boolean(paymentMessage && consultationId)} onClick={() => setVpnNoticeVisible(true)}>{busy ? "Открываем оплату…" : consultationId ? "Проверяем платёж…" : `Оплатить ${priceLabel}`}</button>{paymentMessage && <p className="payment-error" role="status">{paymentMessage}</p>}<p>Оплата проходит на странице ЮKassa. Сайт не получает и не хранит данные банковской карты.</p></section>}</div>}
+          {stage === "payment" && <div className="modal-backdrop">{vpnNoticeVisible ? <section className="payment-card vpn-notice-card" role="alertdialog" aria-modal="true" aria-labelledby="vpn-title"><button className="close" onClick={() => setVpnNoticeVisible(false)} aria-label="Вернуться">×</button><span className="vpn-icon" aria-hidden="true">!</span><small>Перед переходом к оплате</small><h3 id="vpn-title">Выключите VPN, если он включён</h3><p className="vpn-warning">Иначе защищённая страница оплаты может не открыться или платёж может быть отклонён.</p><button className="action-button" disabled={busy} onClick={startPayment}>{busy ? "Открываем оплату…" : "VPN выключен — перейти к оплате"}</button><button className="vpn-back" type="button" onClick={() => setVpnNoticeVisible(false)}>Вернуться назад</button></section> : <section className="payment-card" role="dialog" aria-modal="true" aria-labelledby="payment-title"><button className="close" onClick={() => setStage("room")} aria-label="Закрыть">×</button><span className="payment-icon">₽</span><small>Защищённая оплата через ЮKassa</small><h3 id="payment-title">Тариф «{selectedTariff?.name ?? fallbackTariffs[0].name}»{urgentSelected ? " · Срочно" : ""}</h3><p className="payment-deadline">{selectedDeadline}</p><div className="price-row"><span>К оплате</span><strong>{priceLabel}</strong></div><button className="action-button" disabled={busy || Boolean(paymentMessage && consultationId)} onClick={() => setVpnNoticeVisible(true)}>{busy ? "Открываем оплату…" : consultationId ? "Проверяем платёж…" : `Оплатить ${priceLabel}`}</button>{paymentMessage && <p className="payment-error" role="status">{paymentMessage}</p>}<p>Оплата проходит на странице ЮKassa. Сайт не получает и не хранит данные банковской карты.</p></section>}</div>}
 
-          {stage === "question" && <div className="desk-layer"><article className="question-paper"><header><span>Бланк вопроса</span><strong>Номер консультации (код) — <b>{displayCode(consultationCode)}</b></strong></header>{tipVisible && <div className="timed-tip"><b>Подсказка</b> Опишите кратко свой вопрос. Ответ появится в сейфе справа не позднее срока выбранного тарифа. Не указывайте ФИО, адрес, телефон, e-mail, номера документов и другие персональные данные.</div>}<label htmlFor="question">Ваш вопрос консультанту</label><textarea id="question" value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={1200} placeholder="Например: в 2025 году я продал квартиру. Нужно ли подавать декларацию и какие документы понадобятся?"/><label className="privacy-check"><input type="checkbox" checked={privacyAccepted} onChange={(event) => setPrivacyAccepted(event.target.checked)} /><span>Я ознакомился(ась) с <a href="/legal#privacy" target="_blank">условиями конфиденциальности</a> и подтверждаю, что не указываю в вопросе персональные данные свои или третьих лиц.</span></label><div className="paper-footer"><span>{question.length} / 1200</span><button className="action-button" disabled={question.trim().length < 10 || busy || !privacyAccepted} onClick={saveQuestion}>{busy ? "Сохраняем…" : "Сохранить документ"} <b>✓</b></button></div>{safeMessage && <p className="form-message" role="status">{safeMessage}</p>}</article></div>}
+          {stage === "question" && <div className="desk-layer"><article className="question-paper"><header><span>Описание ситуации</span><strong>Номер консультации (код) — <b>{displayCode(consultationCode)}</b></strong></header>{tipVisible && <div className="timed-tip"><b>Подсказка</b> Опишите существенные даты, суммы и обстоятельства одной налоговой ситуации. Ответ появится в сейфе не позднее срока выбранного тарифа. Не указывайте ФИО, адрес, телефон, e-mail, номера документов и другие персональные данные.</div>}<label htmlFor="question">Ваша ситуация для персонального разбора</label><textarea id="question" value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={1200} placeholder="Например: в 2025 году я продал квартиру. Укажите даты приобретения и продажи, суммы и способ приобретения — без персональных данных."/><label className="privacy-check"><input type="checkbox" checked={privacyAccepted} onChange={(event) => setPrivacyAccepted(event.target.checked)} /><span>Я ознакомился(ась) с <a href="/legal#privacy" target="_blank">условиями конфиденциальности</a> и подтверждаю, что не указываю персональные данные свои или третьих лиц.</span></label><div className="paper-footer"><span>{question.length} / 1200</span><button className="action-button" disabled={question.trim().length < 10 || busy || !privacyAccepted} onClick={saveQuestion}>{busy ? "Сохраняем…" : "Передать на разбор"} <b>✓</b></button></div>{safeMessage && <p className="form-message" role="status">{safeMessage}</p>}</article></div>}
 
           {stage === "waiting" && codeNoticeVisible && <div className="waiting-panel code-notice-panel"><span className="seal">✓</span><h3>Вопрос сохранён</h3><p>Ответ будет подготовлен не позднее <strong>{deadline}</strong>.</p><div className="code-reminder"><span>Ваш персональный код</span><strong>{displayCode(consultationCode)}</strong></div><div className="privacy-countdown"><b>Запомните код!</b><span>Для конфиденциальности окошко закроется через <strong>{codeNoticeSeconds}</strong> сек.</span></div></div>}
 
@@ -535,19 +561,16 @@ export default function Home() {
         <p className="demo-note">Вопрос и ответ хранятся в зашифрованном виде. Для открытия сейфа нужны этот браузер и ваш четырёхзначный код.</p>
       </section>
 
-      <section className="feedback-section" aria-labelledby="feedback-heading">
-        <div className="feedback-heading"><span>Обратная связь</span><h2 id="feedback-heading">Отзывы и предложения посетителей</h2><p>Поделитесь впечатлением о консультации или предложите, как сделать сервис удобнее.</p></div>
-        {feedback.length > 0 && <div className="feedback-grid">{feedback.map((item) => <article key={item.id}><small>{item.category === "review" ? "Отзыв" : "Предложение"}</small><p>{item.content}</p><time>{new Date(item.createdAt).toLocaleDateString("ru-RU")}</time></article>)}</div>}
-        {feedback.length === 0 && <p className="feedback-empty">Опубликованных отзывов пока нет. Вы можете оставить первый — после проверки он появится здесь.</p>}
-        {!feedbackFormVisible ? <button className="feedback-add" type="button" onClick={() => setFeedbackFormVisible(true)}>Добавить</button> : <div className="feedback-form"><div className="feedback-kind"><label><input type="radio" name="feedback-kind" checked={feedbackCategory === "review"} onChange={() => setFeedbackCategory("review")} /> Отзыв</label><label><input type="radio" name="feedback-kind" checked={feedbackCategory === "suggestion"} onChange={() => setFeedbackCategory("suggestion")} /> Предложение</label></div><label htmlFor="feedback-text">Ваше сообщение</label><textarea id="feedback-text" maxLength={700} value={feedbackText} onChange={(event) => setFeedbackText(event.target.value)} placeholder="Напишите, что было полезно или что желательно улучшить."/><label className="privacy-check"><input type="checkbox" checked={feedbackPrivacyAccepted} onChange={(event) => setFeedbackPrivacyAccepted(event.target.checked)} /><span>Я не указываю ФИО, телефон, e-mail и другие персональные данные.</span></label><div className="feedback-form-actions"><span>{feedbackText.length} / 700</span><button className="feedback-cancel" type="button" onClick={() => setFeedbackFormVisible(false)}>Отмена</button><button className="action-button" type="button" disabled={feedbackText.trim().length < 10 || !feedbackPrivacyAccepted || busy} onClick={() => void submitFeedback()}>{busy ? "Отправляем…" : "Отправить на проверку"}</button></div>{feedbackMessage && <p className="form-message" role="status">{feedbackMessage}</p>}</div>}
-      </section>
+      <section className="faq-section" aria-labelledby="faq-heading"><div className="content-heading"><span>Частые вопросы</span><h2 id="faq-heading">FAQ</h2></div><div className="faq-list"><details><summary>Это полноценная декларация 3-НДФЛ?</summary><p>Нет. Сервис проверяет ситуацию, делает расчёт в пределах выбранного тарифа и даёт рекомендации. Подготовка и подача декларации не входят в указанную стоимость.</p></details><details><summary>Какие данные нужно сообщить?</summary><p>Только обстоятельства, даты и суммы, необходимые для анализа. Не передавайте ФИО, адрес, телефон, e-mail, паспорт, ИНН и номера документов.</p></details><details><summary>Чем отличаются тарифы?</summary><p>«Проверка ситуации» помогает определить обязанность, право на вычет и основные действия. «Расчёт и подробный разбор» включает более детальный расчёт, нормативные основания и развёрнутые рекомендации.</p></details><details><summary>Что означает «Срочно»?</summary><p>Это допопция стоимостью 300 ₽: письменный результат готовится в течение 2 часов. Если приём срочных обращений временно закрыт, выбрать её нельзя.</p></details><details><summary>Как получить ответ?</summary><p>После оплаты вы получите персональный код. Ответ откроется в защищённом сейфе в этом браузере после ввода кода.</p></details><details><summary>Можно ли вернуть оплату?</summary><p>Условия возврата и порядок обращения опубликованы в разделе правовой информации.</p></details></div></section>
+
+      <section className="final-cta"><span>Проверьте до оплаты налога</span><h2>Не уверены в расчёте НДФЛ? Проверьте до того, как платить</h2><p>Получите персональный анализ, расчёт и рекомендации в письменном виде.</p><a className="primary-link" href="#diagnostic">Проверить мою ситуацию →</a></section>
 
       {stage === "answer" && <article className="visitor-answer-print"><h1>Ответ консультанта по НДФЛ</h1><p className="visitor-answer-number">Консультация № {displayCode(consultationCode)}</p><div>{answer}</div><p className="visitor-answer-date">Сформировано: {new Date().toLocaleDateString("ru-RU")}</p></article>}
 
       {scheduleNoticeVisible && <div className="schedule-closed-backdrop"><section className="payment-card schedule-closed-card" role="alertdialog" aria-modal="true" aria-labelledby="schedule-closed-title"><button className="close" type="button" onClick={() => setScheduleNoticeVisible(false)} aria-label="Закрыть">×</button><span className="schedule-closed-icon" aria-hidden="true">◷</span><small>Приём вопросов закрыт</small><h3 id="schedule-closed-title">В настоящее время вопросы недоступны</h3><p>Посмотрите расписание на сайте. Приносим извинения за неудобства.</p><button className="action-button" type="button" onClick={showSchedule}>Посмотреть расписание</button></section></div>}
 
       <footer><div className="brand"><span className="brand-mark">₽</span><span>НДФЛ<span className="brand-dot">.просто</span></span></div><nav aria-label="Правовая информация"><a href="/legal#offer">Оферта</a><a href="/legal#privacy">Конфиденциальность</a><a href="/legal#refunds">Возврат</a><a href="/legal#contacts">Контакты</a></nav><a href="#top">Наверх ↑</a></footer>
-      {stage === "room" && <button className="mobile-question-cta" type="button" onClick={beginPayment}>Задать вопрос · {priceLabel}</button>}
+      {stage === "room" && <button className="mobile-question-cta" type="button" onClick={() => document.getElementById("diagnostic")?.scrollIntoView({ behavior: "smooth" })}>Проверить НДФЛ</button>}
     </main>
   );
 }
