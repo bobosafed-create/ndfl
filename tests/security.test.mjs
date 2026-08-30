@@ -56,12 +56,23 @@ test("payment request does not collect or transmit visitor contacts", async () =
 test("tariff choice is validated and bound to the server-side payment amount", async () => {
   const router = await readFile(new URL("../api/router.mjs", import.meta.url), "utf8");
   const tariffs = await import("../lib/tariffs.mjs");
-  assert.deepEqual(tariffs.CONSULTATION_TARIFFS.map((item) => item.amountKopecks), [20000, 40000, 75000, 99000]);
+  assert.deepEqual(tariffs.CONSULTATION_TARIFFS.map((item) => item.amountKopecks), [39000, 99000]);
+  assert.equal(tariffs.URGENT_ADDON.amountKopecks, 30000);
+  assert.equal(tariffs.URGENT_ADDON.deadlineMinutes, 120);
+  assert.deepEqual(tariffs.resolveTariff("situation-check", 0, true), {
+    ...tariffs.CONSULTATION_TARIFFS[0],
+    code: "situation-check-urgent",
+    name: "Проверка ситуации · Срочно",
+    description: `${tariffs.CONSULTATION_TARIFFS[0].description}. ${tariffs.URGENT_ADDON.description}.`,
+    amountKopecks: 69000,
+    deadlineMinutes: 120,
+  });
   assert.match(router, /invalid_tariff/);
   assert.match(router, /remoteAmountKopecks !== localPayment\.amount_kopecks/);
   assert.match(router, /metadata\?\.tariff_code !== localPayment\.tariff_code/);
   assert.match(router, /urgent_tariff_unavailable/);
-  assert.match(router, /requestedTariffCode === "urgent"/);
+  assert.match(router, /requestedUrgent/);
+  assert.match(router, /resolveTariff\(requestedTariffCode, defaultAmountKopecks, requestedUrgent\)/);
 });
 
 test("urgent tariff availability is controlled only from the authenticated cabinet", async () => {
