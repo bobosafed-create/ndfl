@@ -16,7 +16,7 @@ import {
   createConsultationDraft,
   aiConfigured,
 } from "../lib/ai.mjs";
-import { CONSULTATION_TARIFFS, resolveTariff } from "../lib/tariffs.mjs";
+import { CONSULTATION_TARIFFS, URGENT_ADDON, resolveTariff } from "../lib/tariffs.mjs";
 import { isServiceOpen } from "../lib/service-schedule.mjs";
 
 const rateLimits = new Map();
@@ -130,10 +130,8 @@ async function publicTariffs() {
   return json({
     defaultAmountKopecks: result.rows[0]?.consultation_price_kopecks ?? 10000,
     serviceSchedule: normalizeServiceSchedule(result.rows[0]?.consultation_schedule),
-    tariffs: CONSULTATION_TARIFFS.map((tariff) => ({
-      ...tariff,
-      available: tariff.code !== "urgent" || result.rows[0]?.urgent_tariff_available !== false,
-    })),
+    tariffs: CONSULTATION_TARIFFS,
+    urgentAddon: { ...URGENT_ADDON, available: result.rows[0]?.urgent_tariff_available !== false },
   });
 }
 
@@ -276,13 +274,17 @@ async function createPayment(request) {
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   const defaultAmountKopecks = priceResult.rows[0]?.consultation_price_kopecks ?? 10000;
   const requestedTariffCode = typeof input.tariffCode === "string" ? input.tariffCode.trim() : "";
+  const requestedUrgent = input.urgent === true;
+  if (input.urgent !== undefined && typeof input.urgent !== "boolean") {
+    return json({ error: "invalid_urgent_option" }, 400);
+  }
   if (requestedTariffCode && !CONSULTATION_TARIFFS.some((item) => item.code === requestedTariffCode)) {
     return json({ error: "invalid_tariff" }, 400);
   }
-  if (requestedTariffCode === "urgent" && priceResult.rows[0]?.urgent_tariff_available === false) {
+  if (requestedUrgent && priceResult.rows[0]?.urgent_tariff_available === false) {
     return json({ error: "urgent_tariff_unavailable" }, 409);
   }
-  const tariff = resolveTariff(requestedTariffCode, defaultAmountKopecks);
+  const tariff = resolveTariff(requestedTariffCode, defaultAmountKopecks, requestedUrgent);
   const amountKopecks = tariff.amountKopecks;
 
   const client = await database.connect();

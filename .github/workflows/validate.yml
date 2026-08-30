@@ -1,0 +1,26 @@
+name: Validate site
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build > /dev/null
+      - run: node --test tests/rendered-html.test.mjs
+      - run: node --test tests/security.test.mjs tests/postgres-schema.test.mjs tests/service-schedule.test.mjs

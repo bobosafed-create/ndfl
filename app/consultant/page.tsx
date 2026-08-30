@@ -37,7 +37,6 @@ export default function ConsultantCabinet() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
-  const [calculationValue, setCalculationValue] = useState("100");
   const [urgentTariffAvailable, setUrgentTariffAvailable] = useState(true);
   const [draftingId, setDraftingId] = useState<string | null>(null);
   const [alertsEnabled, setAlertsEnabled] = useState(false);
@@ -90,7 +89,6 @@ export default function ConsultantCabinet() {
         for (const item of items) if (next[item.id] === undefined && (item.answer || item.aiDraft)) next[item.id] = item.answer || item.aiDraft || "";
         return next;
       });
-      setCalculationValue(String((calculationsResult.currentPriceKopecks ?? 10000) / 100));
       setUrgentTariffAvailable(calculationsResult.urgentTariffAvailable !== false);
       if (Array.isArray(calculationsResult.serviceSchedule) && calculationsResult.serviceSchedule.length === 7) setServiceSchedule(calculationsResult.serviceSchedule);
       setFeedbackItems(Array.isArray(feedbackResult.feedback) ? feedbackResult.feedback : []);
@@ -282,29 +280,6 @@ export default function ConsultantCabinet() {
     setAuthenticated(false); setAccessKey(""); setConsultations([]); setAlertsEnabled(false); setIncomingAlert(null); setFeedbackItems([]);
   }
 
-  function pressCalculator(key: string) {
-    if (key === "C") return setCalculationValue("0");
-    if (key === "⌫") return setCalculationValue((current) => current.length > 1 ? current.slice(0, -1) : "0");
-    setCalculationValue((current) => (current === "0" ? key : `${current}${key}`).slice(0, 7));
-  }
-
-  async function saveCalculation() {
-    const amountRubles = Number(calculationValue);
-    if (!Number.isInteger(amountRubles) || amountRubles < 1 || loading) return;
-    setLoading(true); setMessage("");
-    try {
-      const response = await fetch("/api/consultant/calculations", {
-        method: "POST",
-        headers: { authorization: `Bearer ${accessKey}`, "content-type": "application/json" },
-        body: JSON.stringify({ amountRubles }),
-      });
-      if (!response.ok) throw new Error("save_failed");
-      await load(accessKey, view);
-      setMessage(`Новая цена ${amountRubles.toLocaleString("ru-RU")} ₽ установлена. Она применяется только к новым платежам.`);
-    } catch { setMessage("Не удалось сохранить сумму. Повторите попытку."); }
-    finally { setLoading(false); }
-  }
-
   async function toggleUrgentTariff() {
     if (loading) return;
     const nextValue = !urgentTariffAvailable;
@@ -317,7 +292,7 @@ export default function ConsultantCabinet() {
       });
       if (!response.ok) throw new Error("save_failed");
       setUrgentTariffAvailable(nextValue);
-      setMessage(nextValue ? "Срочный тариф снова доступен посетителям." : "Срочный тариф временно отключён.");
+      setMessage(nextValue ? "Допопция «Срочно» снова доступна посетителям." : "Допопция «Срочно» временно отключена.");
     } catch { setMessage("Не удалось изменить доступность срочного тарифа."); }
     finally { setLoading(false); }
   }
@@ -444,12 +419,10 @@ export default function ConsultantCabinet() {
 
           <section className="consultation-calculator" aria-labelledby="calculator-title">
             <div className="calculator-machine">
-              <div className="calculator-topline"><span>Цена на сайте</span><span>₽</span></div><h2 id="calculator-title">Стоимость консультации</h2>
-              <output aria-live="polite">{Number(calculationValue || 0).toLocaleString("ru-RU")} ₽</output>
-              <div className="calculator-keys">{["7", "8", "9", "4", "5", "6", "1", "2", "3", "C", "0", "⌫"].map((key) => <button className={key === "C" ? "calculator-clear" : ""} key={key} type="button" onClick={() => pressCalculator(key)}>{key}</button>)}</div>
-              <button className="calculator-save" type="button" disabled={Number(calculationValue) < 1 || loading} onClick={() => void saveCalculation()}>Установить цену на сайте</button>
-              <p className="calculator-disclaimer">Это цена по умолчанию. Она применяется, если посетитель не выбрал тариф. Выбор тарифной карточки действует только для его консультации; уже созданные платежи не изменяются.</p>
-              <div className={`urgent-control ${urgentTariffAvailable ? "available" : "unavailable"}`}><div><b>Срочный тариф</b><span>{urgentTariffAvailable ? "Доступен посетителям" : "Временно недоступен"}</span></div><button type="button" role="switch" aria-checked={urgentTariffAvailable} disabled={loading} onClick={() => void toggleUrgentTariff()}><i /></button></div>
+              <div className="calculator-topline"><span>Тарифы на сайте</span><span>₽</span></div><h2 id="calculator-title">Стоимость услуг</h2>
+              <div className="cabinet-fixed-tariffs"><p><b>Проверка ситуации</b><strong>390 ₽</strong><small>до 4 часов</small></p><p><b>Расчёт и подробный разбор</b><strong>990 ₽</strong><small>до 8 часов</small></p></div>
+              <p className="calculator-disclaimer">Тарифы фиксированы в коде сайта. Уже созданные платежи сохраняют цену и срок, действовавшие в момент оплаты.</p>
+              <div className={`urgent-control ${urgentTariffAvailable ? "available" : "unavailable"}`}><div><b>Допопция «Срочно» · +300 ₽ · до 2 часов</b><span>{urgentTariffAvailable ? "Доступна посетителям" : "Временно недоступна"}</span></div><button type="button" role="switch" aria-checked={urgentTariffAvailable} disabled={loading} onClick={() => void toggleUrgentTariff()}><i /></button></div>
             </div>
 
             <div className="calculation-ledger">

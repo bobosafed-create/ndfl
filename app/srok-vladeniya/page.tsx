@@ -10,7 +10,7 @@ export default function OwnershipPeriodPage() {
       "Основание приобретения квартиры и даты я укажу ниже.",
     ].join("\n");
     window.sessionStorage.setItem("ndfl-calculator-summary", summary);
-    window.sessionStorage.setItem("ndfl-calculator-tariff", "urgent");
+    window.sessionStorage.setItem("ndfl-calculator-tariff", "situation-check");
     window.location.assign("/#room");
   }
 
@@ -90,7 +90,7 @@ export default function OwnershipPeriodPage() {
 
       <section className="savings-offer">
         <div><span>Следующий шаг</span><h2>Узнайте, нужно ли вам платить налог</h2><p>После оплаты в бланк вопроса будет перенесена заготовка. Добавьте основание приобретения квартиры и даты — консультант проверит срок владения.</p></div>
-        <aside><strong>750 ₽</strong><b>Срочная консультация — до 1 часа</b><small>Если срочный тариф доступен в момент заказа</small><button type="button" onClick={goToConsultation}>Проверить мой срок владения →</button><em>Без регистрации</em></aside>
+        <aside><strong>390 ₽</strong><b>Проверка ситуации — до 4 часов</b><small>Допопция «Срочно» до 2 часов доступна на главной странице за 300 ₽</small><button type="button" onClick={goToConsultation}>Проверить мой срок владения →</button><em>Без регистрации</em></aside>
       </section>
 
       <footer className="calc-footer"><p>Информация на странице носит предварительный характер и не заменяет проверку документов.</p><nav><Link href="/legal#offer">Оферта</Link><Link href="/legal#privacy">Конфиденциальность</Link><Link href="/legal#contacts">Контакты</Link></nav></footer>
