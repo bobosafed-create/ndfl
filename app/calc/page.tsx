@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 
 const RUB = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });
-const CONSULTATION_PRICE = 750;
+const CONSULTATION_PRICE = 990;
 
 function money(value: number) {
   return `${RUB.format(Math.max(0, Math.round(value)))} ₽`;
@@ -49,7 +49,7 @@ export default function CalculatorPage() {
       "Прошу проверить применимость правила, состав расходов и документы.",
     ].join("\n");
     window.sessionStorage.setItem("ndfl-calculator-summary", summary);
-    window.sessionStorage.setItem("ndfl-calculator-tariff", "urgent");
+    window.sessionStorage.setItem("ndfl-calculator-tariff", "detailed-review");
     window.location.assign("/#room");
   }
 
@@ -70,7 +70,7 @@ export default function CalculatorPage() {
         <div className="savings-score" aria-label="Экономия в примере">
           <small>Экономия в примере</small>
           <strong>14 950 ₽</strong>
-          <div><span>Консультация</span><b>750 ₽</b></div>
+          <div><span>Подробный разбор</span><b>990 ₽</b></div>
           <p>Окупилась почти в <b>20 раз</b></p>
         </div>
       </header>
@@ -96,7 +96,7 @@ export default function CalculatorPage() {
             <div><small>Без учёта отделки</small><strong>{money(calculation.initialTax)}</strong><span>предварительный налог</span></div>
             <i aria-hidden="true">→</i>
             <div><small>После проверки расходов</small><strong>{money(calculation.newTax)}</strong><span>предварительный налог</span></div>
-            <article className={calculation.saving > 0 ? "positive" : ""}><small>Возможная экономия</small><strong>{money(calculation.saving)}</strong>{calculation.saving > 0 ? <p>Это примерно <b>{calculation.payback.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}</b> стоимости консультации по 750 ₽.</p> : <p>{withoutFinishing === false ? "В договоре нет необходимого условия." : hasDocuments === false ? "Без документов расходы подтвердить нельзя." : "Укажите сумму расходов на отделку."}</p>}</article>
+            <article className={calculation.saving > 0 ? "positive" : ""}><small>Возможная экономия</small><strong>{money(calculation.saving)}</strong>{calculation.saving > 0 ? <p>Это примерно <b>{calculation.payback.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}</b> стоимости подробного разбора по 990 ₽.</p> : <p>{withoutFinishing === false ? "В договоре нет необходимого условия." : hasDocuments === false ? "Без документов расходы подтвердить нельзя." : "Укажите сумму расходов на отделку."}</p>}</article>
           </div>
           <div className="simple-disclaimer"><b>Это демонстрационный расчёт</b><p>Он не учитывает срок владения, кадастровую стоимость, региональные правила, доли собственников и другие обстоятельства. Они могут изменить итог в любую сторону.</p></div>
         </div>
@@ -106,7 +106,7 @@ export default function CalculatorPage() {
 
       <section className="savings-offer">
         <div><span>Следующий шаг</span><h2>Проверьте расчёт до подачи 3-НДФЛ</h2><p>Цифры из калькулятора будут перенесены в бланк вопроса. Вы сможете дополнить и отредактировать их перед отправкой.</p></div>
-        <aside><strong>750 ₽</strong><b>Срочная консультация — до 1 часа</b><small>Если срочный тариф доступен в момент заказа</small><button type="button" onClick={goToConsultation}>Оплатить и задать вопрос →</button><em>Без регистрации</em></aside>
+        <aside><strong>990 ₽</strong><b>Расчёт и подробный разбор — до 8 часов</b><small>Допопцию «Срочно» до 2 часов можно выбрать на главной странице за 300 ₽</small><button type="button" onClick={goToConsultation}>Перейти к персональному разбору →</button><em>Без регистрации</em></aside>
       </section>
 
       <footer className="calc-footer"><p>Предварительный пример не заменяет проверку договора, расходов и подтверждающих документов.</p><nav><a href="/legal#offer">Оферта</a><a href="/legal#privacy">Конфиденциальность</a><a href="/legal#contacts">Контакты</a></nav></footer>
