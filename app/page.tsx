@@ -17,8 +17,8 @@ const scheduleDayLabels: Record<string, string> = {
 const fallbackServiceSchedule: ScheduleDay[] = Object.keys(scheduleDayLabels).map((day, index) => ({ day, enabled: index < 5, start: "09:00", end: "13:00" }));
 
 const fallbackTariffs: Tariff[] = [
-  { code: "situation-check", name: "Проверка ситуации", description: "Персональная проверка НДФЛ, обязанности подать 3-НДФЛ и возможных способов уменьшить налог или получить возврат", amountKopecks: 39000, deadlineMinutes: 240, recommended: true },
-  { code: "detailed-review", name: "Расчёт и подробный разбор", description: "Расчёт налога или возврата, нормативные основания и подробные рекомендации по следующим действиям", amountKopecks: 99000, deadlineMinutes: 480 },
+  { code: "situation-check", name: "Проверка ситуации", description: "Персональная проверка НДФЛ, возникает ли обязанность подать 3-НДФЛ, возможные способы законно уменьшить налог или получить возврат", amountKopecks: 39000, deadlineMinutes: 240, recommended: true },
+  { code: "detailed-review", name: "Расчёт и подробный разбор", description: "Расчет налога или возврата, нормативные основания и подробные рекомендации по вашему вопросу", amountKopecks: 99000, deadlineMinutes: 480 },
 ];
 
 const fallbackUrgentAddon: UrgentAddon = { code: "urgent", name: "Срочно", description: "Письменный результат в течение 2 часов", amountKopecks: 30000, deadlineMinutes: 120, available: true };
@@ -456,7 +456,7 @@ export default function Home() {
       </section>
 
       <section id="diagnostic" className="diagnostic-section" aria-labelledby="diagnostic-heading">
-        <div><span className="mini-label">Бесплатная первичная диагностика</span><h2 id="diagnostic-heading">Не уверены, что вам вообще нужна консультация?</h2><p>Укажите тип ситуации. Мы бесплатно подскажем, что в ней обычно требуется проверить. Это предварительная ориентация, а не индивидуальная налоговая консультация.</p></div>
+        <div><span className="mini-label">Бесплатная первичная диагностика</span><h2 id="diagnostic-heading">Не уверены, что вам вообще нужна консультация?</h2><p>Укажите тип ситуации. Мы бесплатно подскажем, что в ней обычно требуется проверить. Это предварительный обзор, а не индивидуальная налоговая консультация.</p></div>
         <div className="diagnostic-card">
           <label htmlFor="diagnostic-situation">Что произошло?</label>
           <select id="diagnostic-situation" value={diagnosticSituation} onChange={(event) => { setDiagnosticSituation(event.target.value); setDiagnosticComplete(false); }}><option value="">Выберите ситуацию</option>{situations.map((item) => <option value={item.slug} key={item.slug}>{item.title}</option>)}</select>
