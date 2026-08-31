@@ -36,7 +36,8 @@ test("server-renders the consultation landing page", async () => {
   assert.match(html, /Ответ проверяет специалист/);
   assert.match(html, /Проверенный налоговым специалистом письменный ответ в срок выбранного тарифа/);
   assert.match(html, /Выберите формат работы/);
-  assert.match(html, /Получите проверенный налоговым специалистом письменный ответ/);
+  assert.match(html, /Получить письменный ответ/);
+  assert.match(html, /ОПЛАТИТЬ/);
   assert.match(html, /Проверка ситуации/);
   assert.match(html, /Расчёт и подробный разбор/);
   assert.match(html, /Срочно/);
@@ -127,7 +128,7 @@ test("keeps consultation codes four digits and uses the protected payment flow",
   assert.match(page, /Посмотрите расписание на сайте\. Приносим извинения за неудобства\./);
   assert.match(page, /isServiceOpen\(serviceSchedule\)/);
   assert.match(page, /questions_unavailable/);
-  assert.match(page, /<span>НАЧАТЬ<\/span><strong>\{priceLabel\}<\/strong>/);
+  assert.match(page, /<span>ОПЛАТИТЬ<\/span><strong>\{priceLabel\}<\/strong>/);
   assert.match(page, /body: JSON\.stringify\(\{ tariffCode: selectedTariffCode, urgent: urgentSelected \}\)/);
   assert.match(page, /ndfl-calculator-tariff/);
   assert.match(page, /setSelectedTariffCode\("situation-check"\)/);
