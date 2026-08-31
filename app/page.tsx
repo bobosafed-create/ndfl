@@ -523,10 +523,16 @@ export default function Home() {
         <ol className="steps-grid"><li><b>01</b><h3>Опишите ситуацию</h3><p>Без ФИО, телефона, паспорта и ИНН.</p></li><li><b>02</b><h3>Выберите формат</h3><p>Проверка ситуации или подробный расчёт.</p></li><li><b>03</b><h3>Оплатите через ЮKassa</h3><p>Данные банковской карты не попадают на сайт.</p></li><li><b>04</b><h3>Получите код</h3><p>Четыре цифры откроют ваш защищённый сейф.</p></li><li><b>05</b><h3>Получите письменный ответ</h3><p>Анализ, расчёт и рекомендации в выбранный срок.</p></li></ol>
         <a className="flow-cta" href="#pricing-heading">Получить консультацию</a>
         <a className="flow-arrow" href="#pricing-heading" aria-label="Перейти к выбору формата работы">↓</a>
+        <nav className="flow-progress" aria-label="Этапы консультации">
+          <span className={stage === "room" ? "active" : "done"}><b>1</b>Выберите формат</span>
+          <span className={stage === "payment" ? "active" : stage === "question" || stage === "waiting" || stage === "answer" ? "done" : ""}><b>2</b>Оплатите</span>
+          <span className={stage === "question" ? "active" : stage === "waiting" || stage === "answer" ? "done" : ""}><b>3</b>Опишите ситуацию</span>
+          <span className={stage === "waiting" || stage === "answer" ? "active" : ""}><b>4</b>Получите ответ</span>
+        </nav>
       </section>
 
       <section className="pricing-section" aria-labelledby="pricing-heading">
-        <div className="pricing-heading"><h2 id="pricing-heading">Выберите формат работы</h2><a className="flow-arrow" href="#tariff-options" aria-label="Перейти к тарифам">↓</a><div className="service-hours"><b>Приём вопросов</b><strong>{serviceScheduleText}</strong><em>Время московское</em><span>Допопция «Срочно» в отдельные часы может быть недоступна.</span></div></div>
+        <div className="pricing-heading"><h2 id="pricing-heading">Выберите формат работы</h2><div className="service-hours"><b>Приём вопросов</b><strong>{serviceScheduleText}</strong><em>Время московское</em><span>Допопция «Срочно» в отдельные часы может быть недоступна.</span></div></div>
         <div id="tariff-options" className="tariff-grid" role="radiogroup" aria-label="Тариф консультации">
           {tariffs.map((tariff) => <label className={`tariff-card ${selectedTariffCode === tariff.code ? "selected" : ""} ${tariff.available === false ? "unavailable" : ""}`} key={tariff.code}>
             <input type="radio" name="consultation-tariff" value={tariff.code} checked={selectedTariffCode === tariff.code} disabled={tariff.available === false} onChange={() => setSelectedTariffCode(tariff.code)} />
@@ -546,13 +552,11 @@ export default function Home() {
       <section className="privacy-section" aria-labelledby="privacy-heading"><div><span className="mini-label">Конфиденциальность</span><h2 id="privacy-heading">Можно обойтись без регистрации и персональных данных</h2><p>Не указывайте ФИО, телефон, e-mail, паспорт, ИНН, адрес и номера документов. После оплаты сервис выдаёт персональный четырёхзначный код. Для открытия ответа нужны этот браузер и код.</p><a href="/legal#privacy">Подробнее об условиях конфиденциальности →</a></div><div className="privacy-code" aria-hidden="true"><span>Ваш код</span><strong>••••</strong><small>Храните его у себя</small></div></section>
 
       <section id="consultation-door" className="room-section door-section">
-        <button className="flow-cta" type="button" disabled={busy} onClick={beginPayment}>Оплатите консультацию</button>
-        <a className="flow-arrow" href="#consultation-room" aria-label="Перейти к двери консультанта">↓</a>
         <div id="consultation-room" className={`room door-room stage-${stage}`}>
           <div className="window"><span/><span/><span/><span/></div><div className="plant"><i/><b>✦</b></div>
           <div className="door-wrap">
             <div className={`door ${stage !== "room" && stage !== "payment" ? "door-active" : ""}`}><div className="door-sign">КОНСУЛЬТАНТ<small>на связи</small></div><div className="door-knob" /></div>
-            {stage === "room" && <><button className="pay-button" onClick={beginPayment}><span>НАЧАТЬ</span><strong>{priceLabel}</strong></button><p>Опишите одну налоговую ситуацию без регистрации</p></>}
+            {stage === "room" && <><button className="pay-button" onClick={beginPayment}><span>ОПЛАТИТЬ</span><strong>{priceLabel}</strong></button><p>После оплаты здесь откроется форма вопроса</p></>}
           </div>
           <div className="rug" />
 
@@ -561,12 +565,11 @@ export default function Home() {
           {stage === "question" && <div className="desk-layer"><article className="question-paper"><header><span>Описание ситуации</span><strong>Номер консультации (код) — <b>{displayCode(consultationCode)}</b></strong></header>{tipVisible && <div className="timed-tip"><b>Подсказка</b> Опишите существенные даты, суммы и обстоятельства одной налоговой ситуации. Ответ появится в сейфе не позднее срока выбранного тарифа. Не указывайте ФИО, адрес, телефон, e-mail, номера документов и другие персональные данные.</div>}<label htmlFor="question">Ваша ситуация для персонального разбора</label><textarea id="question" value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={1200} placeholder="Например: в 2025 году я продал квартиру. Укажите даты приобретения и продажи, суммы и способ приобретения — без персональных данных."/><label className="privacy-check"><input type="checkbox" checked={privacyAccepted} onChange={(event) => setPrivacyAccepted(event.target.checked)} /><span>Я ознакомился(ась) с <a href="/legal#privacy" target="_blank">условиями конфиденциальности</a> и подтверждаю, что не указываю в вопросе персональные данные свои или третьих лиц.</span></label><div className="paper-footer"><span>{question.length} / 1200</span><button className="action-button" disabled={question.trim().length < 10 || busy || !privacyAccepted} onClick={saveQuestion}>{busy ? "Сохраняем…" : "Передать на разбор"} <b>✓</b></button></div>{safeMessage && <p className="form-message" role="status">{safeMessage}</p>}</article></div>}
 
         </div>
-        <a className="flow-arrow" href="#answer-safe" aria-label="Перейти к получению ответа">↓</a>
       </section>
 
       <section id="answer-safe" className="room-section safe-section">
-        <a className="flow-cta flow-cta-long" href="#answer-safe-room">Получите проверенный налоговым специалистом письменный ответ</a>
-        <div className="section-heading safe-section-heading"><span>Защищённая консультация в срок выбранного тарифа</span><h2>Персональный разбор, расчёт и рекомендации</h2></div>
+        <a className="flow-cta flow-cta-long" href="#answer-safe-room">Получить письменный ответ</a>
+        <div className="section-heading safe-section-heading"><span>Ответ проверяет налоговый специалист</span><h2>Персональный разбор, расчёт и рекомендации</h2><p>Письменный ответ — в срок выбранного тарифа.</p></div>
         <div id="answer-safe-room" className={`room safe-room stage-${stage}`}>
           <div className="window"><span/><span/><span/><span/></div><div className="plant"><i/><b>✦</b></div>
           <div className={`safe ${answerReady ? "safe-ready" : ""}`} aria-label="Защищённый сейф с ответом"><span className="safe-label">{answerReady ? "ОТВЕТ ГОТОВ" : "Проверенный налоговым специалистом письменный ответ в срок выбранного тарифа"}</span><div className={`safe-door ${stage === "answer" ? "safe-open" : ""}`}><i className="safe-wheel" aria-hidden="true"><span /></i><b>ПЕРСОНАЛЬНЫЙ КОД</b></div><div className="safe-legs"><i/><i/></div></div><div className="rug" />
