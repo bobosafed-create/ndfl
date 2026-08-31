@@ -35,7 +35,8 @@ test("server-renders the consultation landing page", async () => {
   assert.match(html, /Не уверены, что вам вообще нужна консультация/);
   assert.match(html, /Ответ проверяет специалист/);
   assert.match(html, /Проверенный налоговым специалистом письменный ответ в срок выбранного тарифа/);
-  assert.match(html, /Выберите глубину разбора/);
+  assert.match(html, /Выберите формат работы/);
+  assert.match(html, /Получите проверенный налоговым специалистом письменный ответ/);
   assert.match(html, /Проверка ситуации/);
   assert.match(html, /Расчёт и подробный разбор/);
   assert.match(html, /Срочно/);
