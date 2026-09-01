@@ -51,6 +51,9 @@ test("payment request does not collect or transmit visitor contacts", async () =
   assert.match(payment, /amountKopecks \/ 100/);
   assert.match(payment, /toFixed\(2\)/);
   assert.match(payment, /tariff_code: tariff\.code/);
+  assert.match(payment, /site_url_not_configured/);
+  assert.match(payment, /site_url_must_use_https/);
+  assert.doesNotMatch(payment, /ndfl\.styleglobe\.ru/);
 });
 
 test("tariff choice is validated and bound to the server-side payment amount", async () => {
