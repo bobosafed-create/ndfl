@@ -109,6 +109,8 @@ test("keeps consultation codes four digits and uses the protected payment flow",
   assert.match(page, /\/api\/payments\/create/);
   assert.match(page, /Защищённая оплата через ЮKassa/);
   assert.match(page, /ndfl-active-consultation/);
+  assert.match(page, /window\.history\.replaceState\(\{\}, "", `\$\{window\.location\.pathname\}#consultation-room`\)/);
+  assert.match(page, /getElementById\("consultation-room"\)\?\.scrollIntoView/);
   assert.doesNotMatch(page, /Демонстрационный платёж/);
   assert.match(page, /окошко закроется через/);
   assert.match(page, /paginateAnswer/);

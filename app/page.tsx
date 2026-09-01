@@ -89,6 +89,12 @@ function paginateAnswer(text: string, pageSize = 1050) {
   return pages.length ? pages : [text];
 }
 
+function focusConsultationRoom() {
+  window.requestAnimationFrame(() => {
+    document.getElementById("consultation-room")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+
 export default function Home() {
   const [stage, setStage] = useState<Stage>("room");
   const [question, setQuestion] = useState("");
@@ -153,6 +159,7 @@ export default function Home() {
       setSelectedTariffCode("situation-check");
       setUrgentSelected(false);
       setStage("question");
+      if (window.location.hash === "#consultation-room") focusConsultationRoom();
     } else if (result.status === "question_submitted" || result.status === "answered") {
       setAnswerReady(result.status === "answered");
       setCodeNoticeVisible(false);
@@ -226,7 +233,8 @@ export default function Home() {
         if (returnedFromPayment) {
           setStage("payment");
           setPaymentMessage("Проверяем результат оплаты…");
-          window.history.replaceState({}, "", `${window.location.pathname}#room`);
+          window.history.replaceState({}, "", `${window.location.pathname}#consultation-room`);
+          focusConsultationRoom();
         }
         void refreshStatus(access.id, access.token);
       }, 0);

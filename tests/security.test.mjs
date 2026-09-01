@@ -53,6 +53,7 @@ test("payment request does not collect or transmit visitor contacts", async () =
   assert.match(payment, /tariff_code: tariff\.code/);
   assert.match(payment, /site_url_not_configured/);
   assert.match(payment, /site_url_must_use_https/);
+  assert.match(payment, /returnUrl\.hash = "consultation-room"/);
   assert.doesNotMatch(payment, /ndfl\.styleglobe\.ru/);
 });
 
