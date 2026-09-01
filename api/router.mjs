@@ -504,7 +504,12 @@ async function openAnswer(request) {
   if (!result.rows[0]) return json({ error: "answer_not_ready" }, 409);
   const answer = withAnswerNotice(decryptMessage(consultation.id, "consultant", result.rows[0]));
   await database.query(
-    "UPDATE consultations SET failed_access_attempts = 0, access_locked_until = NULL, updated_at = now() WHERE id = $1",
+    `UPDATE consultations
+     SET failed_access_attempts = 0,
+         access_locked_until = NULL,
+         answer_opened_at = COALESCE(answer_opened_at, now()),
+         updated_at = now()
+     WHERE id = $1`,
     [consultation.id],
   );
   return json({ answer });
@@ -522,7 +527,7 @@ async function consultantList(request) {
   const view = new URL(request.url).searchParams.get("view") === "archive" ? "archive" : "active";
   const database = getDatabasePool();
   const result = await database.query(
-    `SELECT c.id, c.status, c.answer_due_at, c.created_at, c.archived_at,
+    `SELECT c.id, c.status, c.answer_due_at, c.answer_opened_at, c.created_at, c.archived_at,
             c.tariff_code, c.tariff_name, c.tariff_amount_kopecks, c.tariff_deadline_minutes,
             visitor.ciphertext, visitor.encryption_iv, visitor.authentication_tag,
             answer.ciphertext AS answer_ciphertext,
@@ -581,7 +586,7 @@ async function consultantList(request) {
     counts: countsResult.rows[0],
     consultations: result.rows.map((row) => ({
       id: row.id,
-      status: row.status,
+      status: row.status === "answered" && row.answer_opened_at ? "received" : row.status,
       answerDueAt: row.answer_due_at,
       tariff: row.tariff_code ? {
         code: row.tariff_code,
@@ -613,14 +618,20 @@ async function consultantPendingSummary(request) {
   }
   const database = getDatabasePool();
   const result = await database.query(
-    `SELECT id, created_at
+    `SELECT id, status, answer_opened_at, created_at
      FROM consultations
-     WHERE status = 'question_submitted'
+     WHERE status IN ('question_submitted', 'answered')
      ORDER BY created_at DESC
      LIMIT 100`,
   );
   return json({
-    pending: result.rows.map((row) => ({ id: row.id, createdAt: row.created_at })),
+    pending: result.rows
+      .filter((row) => row.status === "question_submitted")
+      .map((row) => ({ id: row.id, createdAt: row.created_at })),
+    active: result.rows.map((row) => ({
+      id: row.id,
+      status: row.status === "answered" && row.answer_opened_at ? "received" : row.status,
+    })),
   });
 }
 
@@ -733,7 +744,9 @@ async function consultantAnswer(request) {
       [randomUUID(), input.consultationId, encrypted.ciphertext, encrypted.iv, encrypted.authenticationTag],
     );
     await client.query(
-      "UPDATE consultations SET status = 'answered', updated_at = now() WHERE id = $1",
+      `UPDATE consultations
+       SET status = 'answered', answer_opened_at = NULL, updated_at = now()
+       WHERE id = $1`,
       [input.consultationId],
     );
     await client.query("COMMIT");
@@ -797,6 +810,9 @@ async function consultantAiDraft(request) {
     return json({ draft, cached: false });
   } catch (error) {
     console.error(`AI draft request failed: ${error?.code ?? "unknown_error"}; status=${error?.status ?? "none"}`);
+    if (error?.status === 402) return json({ error: "ai_payment_required" }, 502);
+    if (error?.status === 401 || error?.status === 403) return json({ error: "ai_credentials_rejected" }, 502);
+    if (error?.status === 429) return json({ error: "ai_limit_reached" }, 502);
     return json({ error: "ai_unavailable" }, 502);
   }
 }

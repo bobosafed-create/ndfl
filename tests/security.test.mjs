@@ -117,7 +117,8 @@ test("new-question polling is authenticated and does not return question text", 
   assert.match(router, /consultantPendingSummary/);
   assert.match(router, /GET \/api\/consultant\/pending-summary/);
   assert.match(router, /allowRequest\("consultant-alerts"/);
-  assert.match(router, /SELECT id, created_at\s+FROM consultations\s+WHERE status = 'question_submitted'/);
+  assert.match(router, /SELECT id, status, answer_opened_at, created_at\s+FROM consultations\s+WHERE status IN \('question_submitted', 'answered'\)/);
+  assert.doesNotMatch(router, /pending: result\.rows\.map\(\(row\) => \(\{[\s\S]*question:/);
   assert.match(router, /consultantAuthorized\(request\)/);
 });
 
@@ -168,6 +169,9 @@ test("AI drafts are server-side, authenticated and never sent directly to the vi
   assert.match(cabinet, /Подготовить черновик с ИИ/);
   assert.match(cabinet, /AI-агент изучает официальные источники/);
   assert.match(cabinet, /Отправить в сейф/);
+  assert.match(router, /ai_payment_required/);
+  assert.match(router, /error\?\.status === 402/);
+  assert.match(cabinet, /Timeweb отклонил запрос AI с кодом 402/);
 });
 
 test("AI draft formatting removes Markdown stars before editing", async () => {
@@ -213,4 +217,17 @@ test("long consultant answers receive a route-specific UTF-8 body allowance", as
   assert.match(router, /const ANSWER_BODY_LIMIT_BYTES = 65_536/);
   assert.match(router, /async function body\(request, maxBytes = DEFAULT_BODY_LIMIT_BYTES\)/);
   assert.match(router, /async function consultantAnswer[\s\S]+?body\(request, ANSWER_BODY_LIMIT_BYTES\)/);
+});
+
+test("opening the safe records visitor receipt without losing the answer lifecycle", async () => {
+  const router = await readFile(new URL("../api/router.mjs", import.meta.url), "utf8");
+  const postgres = await readFile(new URL("../db/postgres.mjs", import.meta.url), "utf8");
+  const cabinet = await readFile(new URL("../app/consultant/page.tsx", import.meta.url), "utf8");
+  assert.match(postgres, /version: 10[\s\S]+answer_opened_at timestamptz/);
+  assert.match(router, /answer_opened_at = COALESCE\(answer_opened_at, now\(\)\)/);
+  assert.match(router, /row\.status === "answered" && row\.answer_opened_at \? "received"/);
+  assert.match(router, /SET status = 'answered', answer_opened_at = NULL/);
+  assert.match(cabinet, /ОТВЕТ ПОЛУЧЕН, КОНСУЛЬТАЦИЯ ЗАВЕРШЕНА/);
+  assert.match(cabinet, /посетитель успешно открыл сейф/);
+  assert.match(cabinet, /status === "received"/);
 });

@@ -211,7 +211,9 @@ test("renders the consultant cabinet", async () => {
   assert.match(page, /serviceSchedule/);
   assert.match(page, /Выберите консультацию в перечне выше/);
   assert.match(page, /ОТВЕТ ОТПРАВЛЕН В СЕЙФ/);
+  assert.match(page, /ОТВЕТ ПОЛУЧЕН, КОНСУЛЬТАЦИЯ ЗАВЕРШЕНА/);
   assert.match(page, /status: "answered"/);
+  assert.match(page, /"answered" \| "received"/);
   assert.match(page, /Обновить ответ в сейфе/);
   assert.doesNotMatch(page, /Старые тестовые записи|Тестовых записей нет|не являются платежами ЮKassa/);
 });

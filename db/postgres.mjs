@@ -184,6 +184,15 @@ const migrations = [
         '[{"day":"monday","enabled":true,"start":"09:00","end":"13:00"},{"day":"tuesday","enabled":true,"start":"09:00","end":"13:00"},{"day":"wednesday","enabled":true,"start":"09:00","end":"13:00"},{"day":"thursday","enabled":true,"start":"09:00","end":"13:00"},{"day":"friday","enabled":true,"start":"09:00","end":"13:00"},{"day":"saturday","enabled":false,"start":"09:00","end":"13:00"},{"day":"sunday","enabled":false,"start":"09:00","end":"13:00"}]'::jsonb`,
     ],
   },
+  {
+    version: 10,
+    statements: [
+      `ALTER TABLE consultations
+        ADD COLUMN IF NOT EXISTS answer_opened_at timestamptz`,
+      `CREATE INDEX IF NOT EXISTS consultations_answer_opened_idx
+        ON consultations (answer_opened_at DESC) WHERE answer_opened_at IS NOT NULL`,
+    ],
+  },
 ];
 
 function missingDatabaseVariables() {
