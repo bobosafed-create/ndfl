@@ -5,7 +5,7 @@ import Link from "next/link";
 
 type Consultation = {
   id: string;
-  status: "question_submitted" | "answered" | "archived";
+  status: "question_submitted" | "answered" | "received" | "archived";
   answerDueAt: string | null;
   createdAt: string;
   archivedAt: string | null;
@@ -26,6 +26,24 @@ const scheduleDayLabels: Record<string, string> = {
   friday: "Пятница", saturday: "Суббота", sunday: "Воскресенье",
 };
 const defaultServiceSchedule: ScheduleDay[] = Object.keys(scheduleDayLabels).map((day, index) => ({ day, enabled: index < 5, start: "09:00", end: "13:00" }));
+
+function aiDraftErrorMessage(error: unknown) {
+  if (error === "ai_payment_required") return "Timeweb отклонил запрос AI с кодом 402. Проверьте оплату или лимит именно AI-агента, а также соответствие сохранённых ключа и OpenAI URL выбранному агенту.";
+  if (error === "ai_credentials_rejected") return "Timeweb отклонил ключ AI-агента. Сверьте ключ доступа и OpenAI URL в настройках приложения.";
+  if (error === "ai_limit_reached") return "AI-агент достиг установленного лимита запросов или токенов. Проверьте лимит агента в Timeweb и повторите позже.";
+  return "AI-агент временно недоступен. Повторите попытку; если ошибка сохранится, проверьте журнал приложения Timeweb.";
+}
+
+function answerWasSent(status: Consultation["status"]) {
+  return status === "answered" || status === "received";
+}
+
+function consultationStatusLabel(status: Consultation["status"]) {
+  if (status === "question_submitted") return "ЖДЁТ ОТВЕТА";
+  if (status === "answered") return "ОТВЕТ ОТПРАВЛЕН В СЕЙФ";
+  if (status === "received") return "ОТВЕТ ПОЛУЧЕН, КОНСУЛЬТАЦИЯ ЗАВЕРШЕНА";
+  return "В АРХИВЕ";
+}
 
 export default function ConsultantCabinet() {
   const [accessKey, setAccessKey] = useState("");
@@ -103,7 +121,7 @@ export default function ConsultantCabinet() {
           body: JSON.stringify({ consultationId: withoutDraft.id }),
         });
         const draftResult = await draftResponse.json();
-        if (!draftResponse.ok || typeof draftResult.draft !== "string") throw new Error("ai_draft_failed");
+        if (!draftResponse.ok || typeof draftResult.draft !== "string") throw new Error(draftResult.error || "ai_unavailable");
         setAnswers((current) => ({ ...current, [withoutDraft.id]: draftResult.draft }));
         setConsultations((current) => current.map((item) => item.id === withoutDraft.id ? { ...item, aiDraft: draftResult.draft } : item));
         setSelectedId(withoutDraft.id);
@@ -112,9 +130,9 @@ export default function ConsultantCabinet() {
         setMessage(`Данные обновлены в ${new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}. Новых вопросов без черновика нет.`);
       }
     } catch (error) {
-      if (error instanceof Error && error.message === "ai_draft_failed") {
+      if (error instanceof Error && error.message.startsWith("ai_")) {
         setAuthenticated(true);
-        setMessage("Список вопросов обновлён, но AI-агент не смог подготовить черновик. Повторите попытку или проверьте настройки агента Timeweb.");
+        setMessage(`Список вопросов обновлён, но черновик не подготовлен. ${aiDraftErrorMessage(error.message)}`);
         return;
       }
       setAuthenticated(false);
@@ -146,6 +164,14 @@ export default function ConsultantCabinet() {
         if (!response.ok || cancelled) return;
         const result = await response.json();
         const pending: { id: string; createdAt: string }[] = Array.isArray(result.pending) ? result.pending : [];
+        const active: { id: string; status: Consultation["status"] }[] = Array.isArray(result.active) ? result.active : [];
+        if (active.length > 0) {
+          const statusById = new Map(active.map((item) => [item.id, item.status]));
+          setConsultations((current) => current.map((item) => {
+            const status = statusById.get(item.id);
+            return status && item.status !== "archived" ? { ...item, status } : item;
+          }));
+        }
         const fresh = pending.filter((item) => !knownConsultationIds.current.has(item.id));
         for (const item of pending) knownConsultationIds.current.add(item.id);
         if (fresh.length === 0 || cancelled) return;
@@ -349,11 +375,11 @@ export default function ConsultantCabinet() {
         body: JSON.stringify({ consultationId, regenerate: true }),
       });
       const result = await response.json();
-      if (!response.ok || typeof result.draft !== "string") throw new Error("draft_failed");
+      if (!response.ok || typeof result.draft !== "string") throw new Error(result.error || "ai_unavailable");
       setAnswers((current) => ({ ...current, [consultationId]: result.draft }));
       setConsultations((current) => current.map((item) => item.id === consultationId ? { ...item, aiDraft: result.draft } : item));
       setMessage("Подробный черновик со ссылками подготовлен. Проверьте источники и факты перед отправкой.");
-    } catch { setMessage("Не удалось подготовить черновик. Проверьте ключ AI-агента, баланс Timeweb и повторите попытку."); }
+    } catch (error) { setMessage(`Не удалось подготовить черновик. ${aiDraftErrorMessage(error instanceof Error ? error.message : "ai_unavailable")}`); }
     finally { setDraftingId(null); }
   }
 
@@ -428,7 +454,7 @@ export default function ConsultantCabinet() {
 
             <div className="calculation-ledger">
               <div className="consultation-index-heading"><span className="mini-label">Перечень консультаций</span><div className="archive-tabs"><button type="button" className={view === "active" ? "active" : ""} onClick={() => void switchView("active")}>В работе · {counts.active}</button><button type="button" className={view === "archive" ? "active" : ""} onClick={() => void switchView("archive")}>Архив · {counts.archive}</button></div></div>
-              <div className="consultation-index">{consultations.length === 0 ? <p>{view === "archive" ? "Архив пока пуст." : "Новых вопросов пока нет."}</p> : consultations.map((item, index) => <button type="button" className={`${item.id === selectedId ? "selected" : ""} ${item.status === "answered" ? "answered" : ""}`} key={item.id} onClick={() => setSelectedId(item.id)}><span>№ {String(index + 1).padStart(2, "0")} · {item.status === "question_submitted" ? "ЖДЁТ ОТВЕТА" : item.status === "archived" ? "В АРХИВЕ" : "ОТВЕТ ОТПРАВЛЕН В СЕЙФ"}</span><small>{item.tariff ? `${item.tariff.name} · ${(item.tariff.amountKopecks / 100).toLocaleString("ru-RU")} ₽ · ` : ""}{new Date(item.createdAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</small></button>)}</div>
+              <div className="consultation-index">{consultations.length === 0 ? <p>{view === "archive" ? "Архив пока пуст." : "Новых вопросов пока нет."}</p> : consultations.map((item, index) => <button type="button" className={`${item.id === selectedId ? "selected" : ""} ${answerWasSent(item.status) ? "answered" : ""} ${item.status === "received" ? "received" : ""}`} key={item.id} onClick={() => setSelectedId(item.id)}><span>№ {String(index + 1).padStart(2, "0")} · {consultationStatusLabel(item.status)}</span><small>{item.tariff ? `${item.tariff.name} · ${(item.tariff.amountKopecks / 100).toLocaleString("ru-RU")} ₽ · ` : ""}{new Date(item.createdAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</small></button>)}</div>
               <p className="calculator-disclaimer">Архив открывается здесь же, без дополнительного пароля.</p>
             </div>
 
@@ -451,18 +477,18 @@ export default function ConsultantCabinet() {
 
           {!selected ? <div className="cabinet-empty">Выберите консультацию в перечне выше.</div> : (
             <article className={`consultation-editor ${selected.status}`} key={selected.id}>
-              <header><div><span className="mini-label">Консультация</span><h2>{selected.status === "archived" ? "Архивная запись" : selected.status === "answered" ? "Выполненная консультация" : "Новый вопрос"}</h2>{selected.tariff && <p className="consultation-tariff">Тариф: <b>{selected.tariff.name}</b> · {(selected.tariff.amountKopecks / 100).toLocaleString("ru-RU")} ₽ · {selected.tariff.deadlineMinutes === 60 ? "1 час" : `${selected.tariff.deadlineMinutes / 60} ч`}</p>}</div><div className={`consultation-status ${selected.status === "answered" ? "answered" : ""}`}><b>{selected.status === "question_submitted" ? "ЖДЁТ ОТВЕТА" : selected.status === "archived" ? "АРХИВ" : "ОТВЕТ ОТПРАВЛЕН В СЕЙФ"}</b><time>{selected.answerDueAt ? `срок до ${new Date(selected.answerDueAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}` : "без срока"}</time></div></header>
+              <header><div><span className="mini-label">Консультация</span><h2>{selected.status === "archived" ? "Архивная запись" : answerWasSent(selected.status) ? "Выполненная консультация" : "Новый вопрос"}</h2>{selected.tariff && <p className="consultation-tariff">Тариф: <b>{selected.tariff.name}</b> · {(selected.tariff.amountKopecks / 100).toLocaleString("ru-RU")} ₽ · {selected.tariff.deadlineMinutes === 60 ? "1 час" : `${selected.tariff.deadlineMinutes / 60} ч`}</p>}</div><div className={`consultation-status ${answerWasSent(selected.status) ? "answered" : ""} ${selected.status === "received" ? "received" : ""}`}><b>{selected.status === "archived" ? "АРХИВ" : consultationStatusLabel(selected.status)}</b><time>{selected.status === "received" ? "посетитель успешно открыл сейф" : selected.answerDueAt ? `срок до ${new Date(selected.answerDueAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}` : "без срока"}</time></div></header>
               <section className="consultation-document question-document"><h3>Вопрос посетителя</h3><p>{selected.question}</p></section>
               {selected.attachments.length > 0 && <section className="consultation-attachments no-print"><h3>Приложенные документы</h3>{selected.attachments.map((attachment) => <button type="button" key={attachment.id} onClick={() => void downloadAttachment(attachment)}><span>📎 {attachment.name}</span><small>{(attachment.size / 1024).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} КБ · скачать</small></button>)}</section>}
               {selected.status === "archived" ? <section className="consultation-document answer-document"><h3>Ответ консультанта</h3><p>{selected.answer || "Ответ отсутствует."}</p></section> : <>
                 <div className="ai-draft-actions no-print"><button className="ai-draft-button" type="button" disabled={Boolean(draftingId)} onClick={() => void createAiDraft(selected.id)}>{draftingId === selected.id ? "Готовим черновик…" : "Подготовить черновик с ИИ"}</button><button className="copy-question" type="button" onClick={() => void copyQuestion(selected.question)}>Скопировать вопрос</button></div>
                 <p className="ai-review-note no-print">AI-агент ищет обоснование в официальных источниках и создаёт обычный текст без звёздочек. Черновик не отправляется автоматически: проверьте ссылки, факты и отредактируйте ответ.</p>
-                <label className="answer-label" htmlFor={`answer-${selected.id}`}>{selected.status === "answered" ? "Редактировать отправленный ответ" : "Ответ консультанта"}</label>
+                <label className="answer-label" htmlFor={`answer-${selected.id}`}>{answerWasSent(selected.status) ? "Редактировать отправленный ответ" : "Ответ консультанта"}</label>
                 <textarea id={`answer-${selected.id}`} maxLength={14000} rows={24} value={selectedAnswer} onChange={(event) => setAnswers((current) => ({ ...current, [selected.id]: event.target.value }))} placeholder="Проверьте вывод, ссылки на официальные источники, расчёты и необходимые действия." />
                 <p className="answer-auto-note no-print">При отправке в конец ответа автоматически добавляется пометка о том, что вывод основан на предоставленных данных, а дополнительные сведения оформляются новым вопросом.</p>
                 <section className="consultation-document answer-document print-only"><h3>Ответ консультанта</h3><p>{selectedAnswer}</p></section>
               </>}
-              <footer className="consultation-editor-actions no-print"><button className="print-button" type="button" onClick={() => window.print()}>Печать</button>{selected.status === "archived" ? <button className="restore-button" type="button" disabled={loading} onClick={() => void setArchived(selected.id, false)}>Вернуть из архива</button> : selected.status === "answered" ? <button className="archive-button" type="button" disabled={loading} onClick={() => void setArchived(selected.id, true)}>В архив</button> : null}<button className="delete-button" type="button" disabled={loading} onClick={() => void deleteConsultation(selected.id)}>Удалить вопрос и ответ</button>{selected.status !== "archived" && <><span>{selectedAnswer.length} / 14000</span><button className="action-button" disabled={selectedAnswer.trim().length < 10 || loading} onClick={() => void saveAnswer(selected.id)}>{selected.status === "answered" ? "Обновить ответ в сейфе" : "Отправить в сейф"}</button></>}</footer>
+              <footer className="consultation-editor-actions no-print"><button className="print-button" type="button" onClick={() => window.print()}>Печать</button>{selected.status === "archived" ? <button className="restore-button" type="button" disabled={loading} onClick={() => void setArchived(selected.id, false)}>Вернуть из архива</button> : answerWasSent(selected.status) ? <button className="archive-button" type="button" disabled={loading} onClick={() => void setArchived(selected.id, true)}>В архив</button> : null}<button className="delete-button" type="button" disabled={loading} onClick={() => void deleteConsultation(selected.id)}>Удалить вопрос и ответ</button>{selected.status !== "archived" && <><span>{selectedAnswer.length} / 14000</span><button className="action-button" disabled={selectedAnswer.trim().length < 10 || loading} onClick={() => void saveAnswer(selected.id)}>{answerWasSent(selected.status) ? "Обновить ответ в сейфе" : "Отправить в сейф"}</button></>}</footer>
             </article>
           )}
           {incomingAlert && <aside className="incoming-alert" role="alertdialog" aria-live="assertive" aria-labelledby="incoming-alert-title"><button className="incoming-alert-close" type="button" aria-label="Закрыть напоминание" onClick={() => setIncomingAlert(null)}>×</button><span className="incoming-alert-icon" aria-hidden="true">!</span><small>Новое обращение</small><h2 id="incoming-alert-title">{incomingAlert.count === 1 ? "Поступил новый вопрос" : `Поступили новые вопросы: ${incomingAlert.count}`}</h2><p>Откройте обращение и проверьте подготовленный черновик ответа.</p><div><button className="action-button" type="button" onClick={() => void openIncomingAlert()}>Открыть вопрос</button><button className="incoming-alert-later" type="button" onClick={() => setIncomingAlert(null)}>Позже</button></div></aside>}
