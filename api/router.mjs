@@ -22,6 +22,8 @@ import { isServiceOpen } from "../lib/service-schedule.mjs";
 const rateLimits = new Map();
 const ANSWER_NOTICE = "Пометка консультанта: Ответ составлен по предоставленным данным. Если у вас имеются дополнительные обезличенные сведения, способные повлиять на вывод, оформите новый вопрос в том же порядке, что и первоначальный.";
 const MAX_ANSWER_LENGTH = 15000;
+const DEFAULT_BODY_LIMIT_BYTES = 16_384;
+const ANSWER_BODY_LIMIT_BYTES = 65_536;
 const SCHEDULE_DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 const DEFAULT_SERVICE_SCHEDULE = SCHEDULE_DAYS.map((day, index) => ({
   day,
@@ -91,11 +93,11 @@ function allowRequest(scope, request, limit = 12, windowMs = 60_000) {
   return current.count <= limit;
 }
 
-async function body(request) {
+async function body(request, maxBytes = DEFAULT_BODY_LIMIT_BYTES) {
   const length = Number(request.headers.get("content-length") ?? 0);
-  if (length > 16_384) throw new Error("body_too_large");
+  if (length > maxBytes) throw new Error("body_too_large");
   const text = await request.text();
-  if (Buffer.byteLength(text, "utf8") > 16_384) throw new Error("body_too_large");
+  if (Buffer.byteLength(text, "utf8") > maxBytes) throw new Error("body_too_large");
   if (!text.trim()) return {};
   return JSON.parse(text);
 }
@@ -708,7 +710,7 @@ async function consultantAnswer(request) {
   if (!allowRequest("consultant-write", request, 20) || !consultantAuthorized(request)) {
     return json({ error: "unauthorized" }, 401);
   }
-  const input = await body(request);
+  const input = await body(request, ANSWER_BODY_LIMIT_BYTES);
   const answer = typeof input.answer === "string" ? input.answer.trim() : "";
   const answerWithNotice = withAnswerNotice(answer);
   if (!validUuid(input.consultationId) || answer.length < 10 || answerWithNotice.length > MAX_ANSWER_LENGTH) {

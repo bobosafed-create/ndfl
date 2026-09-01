@@ -206,3 +206,11 @@ test("every saved consultant answer receives the data-sufficiency notice", async
   assert.match(router, /encryptMessage\(input\.consultationId, "consultant", answerWithNotice\)/);
   assert.match(cabinet, /автоматически добавляется пометка/);
 });
+
+test("long consultant answers receive a route-specific UTF-8 body allowance", async () => {
+  const router = await readFile(new URL("../api/router.mjs", import.meta.url), "utf8");
+  assert.match(router, /const DEFAULT_BODY_LIMIT_BYTES = 16_384/);
+  assert.match(router, /const ANSWER_BODY_LIMIT_BYTES = 65_536/);
+  assert.match(router, /async function body\(request, maxBytes = DEFAULT_BODY_LIMIT_BYTES\)/);
+  assert.match(router, /async function consultantAnswer[\s\S]+?body\(request, ANSWER_BODY_LIMIT_BYTES\)/);
+});
