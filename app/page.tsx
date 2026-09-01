@@ -130,6 +130,12 @@ export default function Home() {
   const selectedDeadline = urgentSelected ? tariffDeadline(urgentAddon.deadlineMinutes) : selectedTariff ? tariffDeadline(selectedTariff.deadlineMinutes) : tariffDeadline(fallbackTariffs[0].deadlineMinutes);
   const answerPages = useMemo(() => paginateAnswer(answer), [answer]);
   const serviceScheduleText = useMemo(() => formatServiceSchedule(serviceSchedule), [serviceSchedule]);
+  const processStep = stage === "room" ? 1 : stage === "payment" ? 2 : stage === "question" ? 3 : stage === "waiting" && codeNoticeVisible ? 4 : 5;
+
+  function processStepClass(step: number) {
+    if (step < processStep || (step === 5 && stage === "answer")) return "done";
+    return step === processStep ? "active" : "";
+  }
 
   const deadline = useMemo(() => {
     if (!answerDueAt) return "в срок выбранного тарифа";
@@ -336,12 +342,20 @@ export default function Home() {
   }
 
   useEffect(() => {
-    if (!consultationId || !browserToken || (stage !== "waiting" && stage !== "payment")) return;
+    if (!consultationId || !browserToken || answerReady || (stage !== "waiting" && stage !== "payment")) return;
+    const checkStatus = () => void refreshStatus(consultationId, browserToken);
+    const checkVisibleStatus = () => { if (document.visibilityState === "visible") checkStatus(); };
     const timer = window.setInterval(() => {
-      void refreshStatus(consultationId, browserToken);
-    }, stage === "payment" ? 4000 : 30000);
-    return () => window.clearInterval(timer);
-  }, [browserToken, consultationId, refreshStatus, stage]);
+      checkStatus();
+    }, stage === "payment" ? 4000 : 10000);
+    window.addEventListener("focus", checkStatus);
+    document.addEventListener("visibilitychange", checkVisibleStatus);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", checkStatus);
+      document.removeEventListener("visibilitychange", checkVisibleStatus);
+    };
+  }, [answerReady, browserToken, consultationId, refreshStatus, stage]);
 
   useEffect(() => {
     if (stage !== "waiting" || !codeNoticeVisible) return;
@@ -361,7 +375,7 @@ export default function Home() {
   useEffect(() => {
     if (stage !== "waiting" && stage !== "answer") return;
     document.getElementById("answer-safe")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [stage]);
+  }, [answerReady, stage]);
 
   async function saveQuestion() {
     if (question.trim().length < 10 || busy || !privacyAccepted) return;
@@ -527,16 +541,14 @@ export default function Home() {
       </section>
 
       <section className="steps-section" aria-labelledby="steps-heading">
-        <div className="content-heading"><span>Пять понятных шагов</span><h2 id="steps-heading">Как это работает</h2></div>
-        <ol className="steps-grid"><li><b>01</b><h3>Опишите ситуацию</h3><p>Без ФИО, телефона, паспорта и ИНН.</p></li><li><b>02</b><h3>Выберите формат</h3><p>Проверка ситуации или подробный расчёт.</p></li><li><b>03</b><h3>Оплатите через ЮKassa</h3><p>Данные банковской карты не попадают на сайт.</p></li><li><b>04</b><h3>Получите код</h3><p>Четыре цифры откроют ваш защищённый сейф.</p></li><li><b>05</b><h3>Получите письменный ответ</h3><p>Анализ, расчёт и рекомендации в выбранный срок.</p></li></ol>
-        <a className="flow-cta" href="#pricing-heading">Получить консультацию</a>
-        <a className="flow-arrow" href="#pricing-heading" aria-label="Перейти к выбору формата работы">↓</a>
-        <nav className="flow-progress" aria-label="Этапы консультации">
-          <span className={stage === "room" ? "active" : "done"}><b>1</b>Выберите формат</span>
-          <span className={stage === "payment" ? "active" : stage === "question" || stage === "waiting" || stage === "answer" ? "done" : ""}><b>2</b>Оплатите</span>
-          <span className={stage === "question" ? "active" : stage === "waiting" || stage === "answer" ? "done" : ""}><b>3</b>Опишите ситуацию</span>
-          <span className={stage === "waiting" || stage === "answer" ? "active" : ""}><b>4</b>Получите ответ</span>
-        </nav>
+        <div className="content-heading"><span>Пять понятных шагов</span><h2 id="steps-heading">Как это работает</h2><p>Нажмите на этап, чтобы перейти к соответствующей части консультации. Завершённые этапы отмечаются зелёным.</p></div>
+        <ol className="consultation-journey" aria-label="Этапы получения консультации">
+          <li className={processStepClass(1)}><a href="#pricing-heading" aria-current={processStep === 1 ? "step" : undefined}><b>01</b><span><strong>Выберите формат</strong><small>Проверка ситуации или подробный расчёт.</small></span></a></li>
+          <li className={processStepClass(2)}><a href="#consultation-door" aria-current={processStep === 2 ? "step" : undefined}><b>02</b><span><strong>Оплатите консультацию</strong><small>Защищённый переход на страницу ЮKassa.</small></span></a></li>
+          <li className={processStepClass(3)}><a href="#consultation-room" aria-current={processStep === 3 ? "step" : undefined}><b>03</b><span><strong>Опишите ситуацию</strong><small>Без ФИО, телефона, паспорта и ИНН.</small></span></a></li>
+          <li className={processStepClass(4)}><a href="#answer-safe-room" aria-current={processStep === 4 ? "step" : undefined}><b>04</b><span><strong>Сохраните код</strong><small>Четыре цифры откроют защищённый сейф.</small></span></a></li>
+          <li className={processStepClass(5)}><a href="#answer-safe-room" aria-current={processStep === 5 ? "step" : undefined}><b>05</b><span><strong>Получите ответ</strong><small>Сейф откроется сразу после ответа специалиста.</small></span></a></li>
+        </ol>
       </section>
 
       <section className="pricing-section" aria-labelledby="pricing-heading">
@@ -580,11 +592,11 @@ export default function Home() {
         <div className="section-heading safe-section-heading"><span>Ответ проверяет налоговый специалист</span><h2>Персональный разбор, расчёт и рекомендации</h2><p>Письменный ответ — в срок выбранного тарифа.</p></div>
         <div id="answer-safe-room" className={`room safe-room stage-${stage}`}>
           <div className="window"><span/><span/><span/><span/></div><div className="plant"><i/><b>✦</b></div>
-          <div className={`safe ${answerReady ? "safe-ready" : ""}`} aria-label="Защищённый сейф с ответом"><span className="safe-label">{answerReady ? "ОТВЕТ ГОТОВ" : "Проверенный налоговым специалистом письменный ответ в срок выбранного тарифа"}</span><div className={`safe-door ${stage === "answer" ? "safe-open" : ""}`}><i className="safe-wheel" aria-hidden="true"><span /></i><b>ПЕРСОНАЛЬНЫЙ КОД</b></div><div className="safe-legs"><i/><i/></div></div><div className="rug" />
+          <div className={`safe ${answerReady ? "safe-ready" : ""}`} aria-label="Защищённый сейф с ответом"><span className="safe-label">{answerReady ? "ОТВЕТ ПОЛУЧЕН" : "Проверенный налоговым специалистом письменный ответ в срок выбранного тарифа"}</span><div className={`safe-door ${stage === "answer" ? "safe-open" : ""}`}><i className="safe-wheel" aria-hidden="true"><span /></i><b>ПЕРСОНАЛЬНЫЙ КОД</b></div><div className="safe-legs"><i/><i/></div></div><div className="rug" />
 
           {stage === "waiting" && codeNoticeVisible && <div className="waiting-panel code-notice-panel"><span className="seal">✓</span><h3>Вопрос сохранён</h3><p>Ответ будет подготовлен не позднее <strong>{deadline}</strong>.</p><div className="code-reminder"><span>Ваш персональный код</span><strong>{displayCode(consultationCode)}</strong></div><div className="privacy-countdown"><b>Запомните код!</b><span>Для конфиденциальности окошко закроется через <strong>{codeNoticeSeconds}</strong> сек.</span></div></div>}
           {stage === "waiting" && !codeNoticeVisible && !answerReady && <div className="pending-toast" role="status"><i />Вопрос принят и зашифрован. Ожидаем ответ консультанта.</div>}
-          {stage === "waiting" && !codeNoticeVisible && answerReady && <div className="safe-entry-panel"><span className="safe-entry-kicker">Ответ готов</span><h3>Откройте сейф</h3><p>Введите сохранённый персональный код консультации.</p><label htmlFor="safe-code">Код от сейфа</label><div className="code-entry"><input id="safe-code" inputMode="numeric" autoComplete="one-time-code" maxLength={4} value={safeCode} onChange={(event) => setSafeCode(event.target.value.replace(/\D/g, ""))} placeholder="••••" aria-label="Четырёхзначный код консультации"/><button onClick={openSafe}>Открыть</button></div>{safeMessage && <p className="safe-message" role="status">{safeMessage}</p>}</div>}
+          {stage === "waiting" && !codeNoticeVisible && answerReady && <div className="safe-entry-panel"><span className="safe-entry-kicker">Ответ получен</span><h3>Введите код от сейфа</h3><p>Ответ специалиста уже доступен. Введите сохранённый персональный код консультации.</p><label htmlFor="safe-code">Код от сейфа</label><div className="code-entry"><input id="safe-code" inputMode="numeric" autoComplete="one-time-code" maxLength={4} value={safeCode} onChange={(event) => setSafeCode(event.target.value.replace(/\D/g, ""))} placeholder="••••" aria-label="Четырёхзначный код консультации"/><button onClick={openSafe}>Открыть</button></div>{safeMessage && <p className="safe-message" role="status">{safeMessage}</p>}</div>}
           {stage === "answer" && <div className="answer-layer"><div className="answer-document-actions"><button type="button" onClick={downloadAnswer}>Скачать ответ</button><button type="button" onClick={() => window.print()}>Печать / PDF</button></div><section className="answer-carousel" aria-label={`Ответ консультанта, страница ${answerPage + 1} из ${answerPages.length}`}><div className="answer-track">{answerPages.map((page, index) => <article className="answer-paper" key={index} aria-hidden={index !== answerPage}><header><span>Ответ консультанта</span><strong>Консультация № {displayCode(consultationCode)}</strong></header><div className="consultant-stamp">КОНСУЛЬТАНТ<br/><b>ОТВЕТИЛ</b></div><h3>{index === 0 ? "Ответ готов" : "Продолжение ответа"}</h3><p className="consultation-answer">{page}</p>{index === answerPages.length - 1 && <div className="answer-note"><b>Важно:</b> ответ относится к описанной ситуации. Если существенные обстоятельства не были указаны, вывод может измениться.</div>}</article>)}</div><div className="answer-pagination"><button type="button" disabled={answerPage === 0} onClick={() => setAnswerPage((page) => Math.max(0, page - 1))}>← Назад</button><span>Страница <b>{answerPage + 1}</b> из {answerPages.length}</span>{answerPage < answerPages.length - 1 ? <button type="button" onClick={() => setAnswerPage((page) => Math.min(answerPages.length - 1, page + 1))}>Далее →</button> : <button className="finish-answer" type="button" onClick={resetConsultation}>Завершить</button>}</div><div className="answer-dots" aria-hidden="true">{answerPages.map((_, index) => <i className={index === answerPage ? "active" : ""} key={index} />)}</div></section></div>}
         </div>
         <p className="demo-note">Вопрос и ответ хранятся в зашифрованном виде. Для открытия сейфа нужны этот браузер и ваш четырёхзначный код.</p>

@@ -53,6 +53,12 @@ test("server-renders the consultation landing page", async () => {
   assert.match(html, /Пользователь может оставаться анонимным/);
   assert.match(html, /Персональный анализ/);
   assert.match(html, /Как это работает/);
+  assert.match(html, /Этапы получения консультации/);
+  assert.match(html, /Выберите формат/);
+  assert.match(html, /Оплатите консультацию/);
+  assert.match(html, /Сохраните код/);
+  assert.match(html, /Сейф откроется сразу после ответа специалиста/);
+  assert.doesNotMatch(html, /class="steps-grid"|class="flow-progress"/);
   assert.match(html, /Не уверены в расчёте НДФЛ/);
   assert.doesNotMatch(html, /Опубликованных отзывов пока нет/);
   assert.doesNotMatch(html, /codex-preview|Building your site/);
@@ -142,6 +148,10 @@ test("keeps consultation codes four digits and uses the protected payment flow",
   assert.match(page, /data-future-path/);
   assert.match(page, /\/api\/visits/);
   assert.match(page, /\/api\/consultant\/visitor-stats/);
+  assert.match(page, /stage === "payment" \? 4000 : 10000/);
+  assert.match(page, /document\.addEventListener\("visibilitychange", checkVisibleStatus\)/);
+  assert.match(page, /ОТВЕТ ПОЛУЧЕН/);
+  assert.match(page, /Введите код от сейфа/);
 });
 
 test("sets the selected tariff deadline when the visitor saves a question", async () => {
@@ -200,6 +210,9 @@ test("renders the consultant cabinet", async () => {
   assert.match(page, /Сохранить расписание/);
   assert.match(page, /serviceSchedule/);
   assert.match(page, /Выберите консультацию в перечне выше/);
+  assert.match(page, /ОТВЕТ ОТПРАВЛЕН В СЕЙФ/);
+  assert.match(page, /status: "answered"/);
+  assert.match(page, /Обновить ответ в сейфе/);
   assert.doesNotMatch(page, /Старые тестовые записи|Тестовых записей нет|не являются платежами ЮKassa/);
 });
 
