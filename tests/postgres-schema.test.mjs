@@ -80,3 +80,12 @@ test("feedback is encrypted and visit totals are stored without visitor identifi
   assert.match(source, /visit_day date PRIMARY KEY/);
   assert.doesNotMatch(source, /visitor_daily_counts[\s\S]{0,300}(?:ip_address|visitor_id|browser_id)/i);
 });
+
+test("tariff upgrades have durable consultation and payment state", () => {
+  assert.match(source, /purpose varchar\(24\) NOT NULL DEFAULT 'consultation'/);
+  assert.match(source, /purpose IN \('consultation', 'tariff_upgrade'\)/);
+  assert.match(source, /confirmation_url text/);
+  assert.match(source, /upgrade_status varchar\(24\)/);
+  assert.match(source, /upgrade_requested_at timestamptz/);
+  assert.match(source, /upgrade_completed_at timestamptz/);
+});

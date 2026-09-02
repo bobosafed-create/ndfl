@@ -8,6 +8,7 @@ type Stage = "room" | "payment" | "question" | "waiting" | "answer";
 type Tariff = { code: string; name: string; description: string; amountKopecks: number; deadlineMinutes: number; recommended?: boolean; available?: boolean };
 type UrgentAddon = { code: string; name: string; description: string; amountKopecks: number; deadlineMinutes: number; available?: boolean };
 type ScheduleDay = { day: string; enabled: boolean; start: string; end: string };
+type UpgradeStatus = null | "requested" | "declined" | "awaiting_payment" | "completed";
 
 const scheduleDayLabels: Record<string, string> = {
   monday: "Понедельник", tuesday: "Вторник", wednesday: "Среда", thursday: "Четверг",
@@ -168,6 +169,9 @@ export default function Home() {
   const [visitorStats, setVisitorStats] = useState<{ total: number; today: number } | null>(null);
   const [serviceSchedule, setServiceSchedule] = useState<ScheduleDay[]>(fallbackServiceSchedule);
   const [scheduleNoticeVisible, setScheduleNoticeVisible] = useState(false);
+  const [upgradeStatus, setUpgradeStatus] = useState<UpgradeStatus>(null);
+  const [upgradeBusy, setUpgradeBusy] = useState(false);
+  const [upgradeMessage, setUpgradeMessage] = useState("");
 
   const selectedTariff = useMemo(() => tariffs.find((tariff) => tariff.code === selectedTariffCode) ?? null, [selectedTariffCode, tariffs]);
   const priceKopecks = (selectedTariff?.amountKopecks ?? fallbackTariffs[0].amountKopecks) + (urgentSelected ? urgentAddon.amountKopecks : 0);
@@ -198,6 +202,7 @@ export default function Home() {
     if (!response.ok) return null;
     const result = await response.json();
     setAnswerDueAt(result.answerDueAt ?? null);
+    setUpgradeStatus(result.upgradeStatus ?? null);
     if (result.status === "paid") {
       const purchaseGoalKey = `ndfl-metrika-purchase-${id}`;
       if (!window.localStorage.getItem(purchaseGoalKey)) {
@@ -288,12 +293,16 @@ export default function Home() {
         setConsultationId(access.id);
         setBrowserToken(access.token);
         setConsultationCode(access.code);
-        const returnedFromPayment = new URLSearchParams(window.location.search).get("payment") === "return";
-        if (returnedFromPayment) {
+        const paymentReturn = new URLSearchParams(window.location.search).get("payment");
+        if (paymentReturn === "return") {
           setStage("payment");
           setPaymentMessage("Проверяем результат оплаты…");
           window.history.replaceState({}, "", `${window.location.pathname}#consultation-room`);
           focusConsultationRoom();
+        } else if (paymentReturn === "upgrade-return") {
+          setStage("waiting");
+          setUpgradeStatus("awaiting_payment");
+          window.history.replaceState({}, "", `${window.location.pathname}#answer-safe`);
         }
         void refreshStatus(access.id, access.token);
       }, 0);
@@ -526,6 +535,34 @@ export default function Home() {
     }
   }
 
+  async function decideUpgrade(decision: "decline" | "pay") {
+    if (!consultationId || !browserToken || upgradeBusy) return;
+    setUpgradeBusy(true);
+    setUpgradeMessage("");
+    try {
+      const response = await fetch("/api/consultations/upgrade", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ consultationId, browserToken, decision }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "upgrade_failed");
+      setUpgradeStatus(result.upgradeStatus ?? null);
+      if (decision === "pay" && typeof result.confirmationUrl === "string") {
+        window.location.assign(result.confirmationUrl);
+        return;
+      }
+      setUpgradeMessage(decision === "decline"
+        ? "Вы сохранили тариф 390 ₽. Консультант подготовит краткий ответ в первоначальном объёме."
+        : "Доплата подтверждена. Консультант подготовит подробный разбор.");
+      await refreshStatus(consultationId, browserToken);
+    } catch {
+      setUpgradeMessage("Не удалось выполнить действие. Проверьте соединение и повторите попытку.");
+    } finally {
+      setUpgradeBusy(false);
+    }
+  }
+
   function resetConsultation() {
     window.localStorage.removeItem("ndfl-active-consultation");
     setStage("room");
@@ -547,6 +584,9 @@ export default function Home() {
     setSelectedTariffCode("situation-check");
     setUrgentSelected(false);
     setVpnNoticeVisible(false);
+    setUpgradeStatus(null);
+    setUpgradeBusy(false);
+    setUpgradeMessage("");
   }
 
   return (
@@ -706,7 +746,11 @@ export default function Home() {
           <div className={`safe ${answerReady ? "safe-ready" : ""}`} aria-label="Защищённый сейф с ответом"><span className="safe-label">{answerReady ? "ОТВЕТ ПОЛУЧЕН" : "Проверенный налоговым специалистом письменный ответ в срок выбранного тарифа"}</span><div className={`safe-door ${stage === "answer" ? "safe-open" : ""}`}><i className="safe-wheel" aria-hidden="true"><span /></i><b>ПЕРСОНАЛЬНЫЙ КОД</b></div><div className="safe-legs"><i/><i/></div></div><div className="rug" />
 
           {stage === "waiting" && codeNoticeVisible && <div className="waiting-panel code-notice-panel"><span className="seal">✓</span><h3>Вопрос сохранён</h3><p>Ответ будет подготовлен не позднее <strong>{deadline}</strong>.</p><div className="code-reminder"><span>Ваш персональный код</span><strong>{displayCode(consultationCode)}</strong></div><div className="privacy-countdown"><b>Запомните код!</b><span>Для конфиденциальности окошко закроется через <strong>{codeNoticeSeconds}</strong> сек.</span></div></div>}
-          {stage === "waiting" && !codeNoticeVisible && !answerReady && <div className="pending-toast" role="status"><i />Вопрос принят и зашифрован. Ожидаем ответ консультанта.</div>}
+          {stage === "waiting" && !codeNoticeVisible && upgradeStatus === "requested" && <section className="upgrade-panel" role="dialog" aria-labelledby="upgrade-title"><span className="upgrade-kicker">Уточнение объёма работы</span><h3 id="upgrade-title">Для вопроса нужен подробный разбор</h3><p>Консультант увидел признаки тарифа 990 ₽. Выберите один из двух вариантов:</p><div className="upgrade-options"><button type="button" disabled={upgradeBusy} onClick={() => void decideUpgrade("decline")}><b>Оставить тариф 390 ₽</b><span>Получить краткий вывод и общий порядок действий без сложного расчёта.</span></button><button className="upgrade-pay" type="button" disabled={upgradeBusy} onClick={() => void decideUpgrade("pay")}><b>Доплатить 600 ₽</b><span>Перейти к точному расчёту и подробному разбору. Новый срок начнётся после доплаты.</span></button></div>{upgradeMessage && <p className="upgrade-message" role="status">{upgradeMessage}</p>}</section>}
+          {stage === "waiting" && !codeNoticeVisible && upgradeStatus === "awaiting_payment" && !answerReady && <div className="pending-toast upgrade-pending" role="status"><i />Проверяем доплату 600 ₽. После подтверждения начнётся новый срок подробного разбора.</div>}
+          {stage === "waiting" && !codeNoticeVisible && upgradeStatus === "completed" && !answerReady && <div className="pending-toast upgrade-complete" role="status"><i />Доплата получена. Консультант готовит подробный разбор.</div>}
+          {stage === "waiting" && !codeNoticeVisible && upgradeStatus === "declined" && !answerReady && <div className="pending-toast" role="status"><i />Выбран тариф 390 ₽. Консультант готовит краткий ответ.</div>}
+          {stage === "waiting" && !codeNoticeVisible && upgradeStatus === null && !answerReady && <div className="pending-toast" role="status"><i />Вопрос принят и зашифрован. Ожидаем ответ консультанта.</div>}
           {stage === "waiting" && !codeNoticeVisible && answerReady && <div className="safe-entry-panel"><span className="safe-entry-kicker">Ответ получен</span><h3>Введите код от сейфа</h3><p>Ответ специалиста уже доступен. Введите сохранённый персональный код консультации.</p><label htmlFor="safe-code">Код от сейфа</label><div className="code-entry"><input id="safe-code" inputMode="numeric" autoComplete="one-time-code" maxLength={4} value={safeCode} onChange={(event) => setSafeCode(event.target.value.replace(/\D/g, ""))} placeholder="••••" aria-label="Четырёхзначный код консультации"/><button onClick={openSafe}>Открыть</button></div>{safeMessage && <p className="safe-message" role="status">{safeMessage}</p>}</div>}
           {stage === "answer" && <div className="answer-layer"><div className="answer-document-actions"><button type="button" onClick={downloadAnswer}>Скачать ответ</button><button type="button" onClick={() => window.print()}>Печать / PDF</button></div><section className="answer-carousel" aria-label={`Ответ консультанта, страница ${answerPage + 1} из ${answerPages.length}`}><div className="answer-track">{answerPages.map((page, index) => <article className="answer-paper" key={index} aria-hidden={index !== answerPage}><header><span>Ответ консультанта</span><strong>Консультация № {displayCode(consultationCode)}</strong></header><div className="consultant-stamp">КОНСУЛЬТАНТ<br/><b>ОТВЕТИЛ</b></div><h3>{index === 0 ? "Ответ готов" : "Продолжение ответа"}</h3><p className="consultation-answer">{page}</p>{index === answerPages.length - 1 && <div className="answer-note"><b>Важно:</b> ответ относится к описанной ситуации. Если существенные обстоятельства не были указаны, вывод может измениться.</div>}</article>)}</div><div className="answer-pagination"><button type="button" disabled={answerPage === 0} onClick={() => setAnswerPage((page) => Math.max(0, page - 1))}>← Назад</button><span>Страница <b>{answerPage + 1}</b> из {answerPages.length}</span>{answerPage < answerPages.length - 1 ? <button type="button" onClick={() => setAnswerPage((page) => Math.min(answerPages.length - 1, page + 1))}>Далее →</button> : <button className="finish-answer" type="button" onClick={resetConsultation}>Завершить</button>}</div><div className="answer-dots" aria-hidden="true">{answerPages.map((_, index) => <i className={index === answerPage ? "active" : ""} key={index} />)}</div></section></div>}
         </div>

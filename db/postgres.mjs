@@ -202,6 +202,33 @@ const migrations = [
         ADD COLUMN IF NOT EXISTS tariff_assessment_confirmed boolean NOT NULL DEFAULT false`,
     ],
   },
+  {
+    version: 12,
+    statements: [
+      `ALTER TABLE payments
+        ADD COLUMN IF NOT EXISTS purpose varchar(24) NOT NULL DEFAULT 'consultation'`,
+      `ALTER TABLE payments
+        DROP CONSTRAINT IF EXISTS payments_purpose_check`,
+      `ALTER TABLE payments
+        ADD CONSTRAINT payments_purpose_check
+        CHECK (purpose IN ('consultation', 'tariff_upgrade'))`,
+      `ALTER TABLE payments
+        ADD COLUMN IF NOT EXISTS confirmation_url text`,
+      `ALTER TABLE consultations
+        ADD COLUMN IF NOT EXISTS upgrade_status varchar(24)`,
+      `ALTER TABLE consultations
+        DROP CONSTRAINT IF EXISTS consultations_upgrade_status_check`,
+      `ALTER TABLE consultations
+        ADD CONSTRAINT consultations_upgrade_status_check
+        CHECK (upgrade_status IS NULL OR upgrade_status IN ('requested', 'declined', 'awaiting_payment', 'completed'))`,
+      `ALTER TABLE consultations
+        ADD COLUMN IF NOT EXISTS upgrade_requested_at timestamptz`,
+      `ALTER TABLE consultations
+        ADD COLUMN IF NOT EXISTS upgrade_completed_at timestamptz`,
+      `CREATE INDEX IF NOT EXISTS payments_upgrade_idx
+        ON payments (consultation_id, created_at DESC) WHERE purpose = 'tariff_upgrade'`,
+    ],
+  },
 ];
 
 function missingDatabaseVariables() {

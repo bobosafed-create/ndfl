@@ -24,6 +24,7 @@ const ANSWER_NOTICE = "Пометка консультанта: Ответ со�
 const MAX_ANSWER_LENGTH = 15000;
 const DEFAULT_BODY_LIMIT_BYTES = 16_384;
 const ANSWER_BODY_LIMIT_BYTES = 65_536;
+const UPGRADE_AMOUNT_KOPECKS = CONSULTATION_TARIFFS[1].amountKopecks - CONSULTATION_TARIFFS[0].amountKopecks;
 const TARIFF_ASSESSMENT_FLAGS = new Set([
   "exact-calculation", "multiple-items", "compare-options", "spouses", "investments",
   "loss-offset", "tax-notice", "legal-detail", "multiple-questions",
@@ -344,9 +345,9 @@ async function createPayment(request) {
       throw new Error("invalid_yookassa_response");
     }
     await database.query(
-      `UPDATE payments SET provider_payment_id = $1, status = $2, updated_at = now()
-       WHERE id = $3`,
-      [payment.id, payment.status ?? "pending", paymentId],
+      `UPDATE payments SET provider_payment_id = $1, status = $2, confirmation_url = $3, updated_at = now()
+       WHERE id = $4`,
+      [payment.id, payment.status ?? "pending", confirmationUrl, paymentId],
     );
     return json({ consultationId, browserToken, code, confirmationUrl, amountKopecks, tariff }, 201);
   } catch (error) {
@@ -375,7 +376,8 @@ async function synchronizePayment(database, consultationId) {
   const result = await database.query(
     `SELECT p.provider_payment_id, p.status, p.amount_kopecks, c.tariff_code
      FROM payments p JOIN consultations c ON c.id = p.consultation_id
-     WHERE p.consultation_id = $1 ORDER BY p.created_at DESC LIMIT 1`,
+     WHERE p.consultation_id = $1 AND p.purpose = 'consultation'
+     ORDER BY p.created_at DESC LIMIT 1`,
     [consultationId],
   );
   const localPayment = result.rows[0];
@@ -413,6 +415,126 @@ async function synchronizePayment(database, consultationId) {
   return { ...localPayment, status: remoteStatus };
 }
 
+async function completeTariffUpgrade(database, consultationId) {
+  await database.query(
+    `UPDATE consultations
+     SET tariff_code = CASE WHEN tariff_code LIKE '%-urgent' THEN 'detailed-review-urgent' ELSE 'detailed-review' END,
+         tariff_name = CASE WHEN tariff_code LIKE '%-urgent' THEN 'Расчёт и подробный разбор · Срочно' ELSE 'Расчёт и подробный разбор' END,
+         tariff_amount_kopecks = tariff_amount_kopecks + $2,
+         tariff_deadline_minutes = CASE WHEN tariff_code LIKE '%-urgent' THEN 120 ELSE 480 END,
+         answer_due_at = now() + CASE WHEN tariff_code LIKE '%-urgent' THEN interval '2 hours' ELSE interval '8 hours' END,
+         upgrade_status = 'completed', upgrade_completed_at = now(), updated_at = now()
+     WHERE id = $1 AND tariff_code LIKE 'situation-check%' AND upgrade_status = 'awaiting_payment'`,
+    [consultationId, UPGRADE_AMOUNT_KOPECKS],
+  );
+}
+
+async function synchronizeUpgradePayment(database, consultationId) {
+  const result = await database.query(
+    `SELECT provider_payment_id, status, amount_kopecks, confirmation_url
+     FROM payments
+     WHERE consultation_id = $1 AND purpose = 'tariff_upgrade'
+     ORDER BY created_at DESC LIMIT 1`,
+    [consultationId],
+  );
+  const localPayment = result.rows[0];
+  if (!localPayment?.provider_payment_id) return localPayment ?? null;
+  if (localPayment.status === "succeeded") {
+    await completeTariffUpgrade(database, consultationId);
+    return localPayment;
+  }
+
+  const remotePayment = await getYooKassaPayment(localPayment.provider_payment_id);
+  if (remotePayment?.metadata?.consultation_id !== consultationId || remotePayment?.metadata?.payment_purpose !== "tariff_upgrade") return null;
+  const remoteAmountKopecks = Math.round(Number(remotePayment?.amount?.value) * 100);
+  if (remoteAmountKopecks !== UPGRADE_AMOUNT_KOPECKS || remoteAmountKopecks !== localPayment.amount_kopecks) return null;
+  const remoteStatus = remotePayment.status;
+  if (!["pending", "waiting_for_capture", "succeeded", "cancelled"].includes(remoteStatus)) return null;
+  await database.query(
+    "UPDATE payments SET status = $1, updated_at = now() WHERE provider_payment_id = $2",
+    [remoteStatus, localPayment.provider_payment_id],
+  );
+  if (remoteStatus === "succeeded") await completeTariffUpgrade(database, consultationId);
+  if (remoteStatus === "cancelled") {
+    await database.query(
+      "UPDATE consultations SET upgrade_status = 'requested', updated_at = now() WHERE id = $1 AND upgrade_status = 'awaiting_payment'",
+      [consultationId],
+    );
+  }
+  return { ...localPayment, status: remoteStatus };
+}
+
+async function consultationUpgradeDecision(request) {
+  if (!allowRequest("tariff-upgrade", request, 8, 10 * 60_000)) return json({ error: "too_many_requests" }, 429);
+  const input = await body(request);
+  if (!validUuid(input.consultationId) || !["decline", "pay"].includes(input.decision)) return json({ error: "invalid_upgrade_decision" }, 400);
+  const database = getDatabasePool();
+  let consultation = await authenticateConsultation(database, input.consultationId, input.browserToken);
+  if (!consultation) return json({ error: "not_found" }, 404);
+  if (consultation.status !== "question_submitted" || !consultation.tariff_code?.startsWith("situation-check")) {
+    return json({ error: "upgrade_not_available" }, 409);
+  }
+
+  if (input.decision === "decline") {
+    const result = await database.query(
+      `UPDATE consultations SET upgrade_status = 'declined', updated_at = now()
+       WHERE id = $1 AND upgrade_status = 'requested' RETURNING id`,
+      [consultation.id],
+    );
+    if (!result.rows[0]) return json({ error: "upgrade_not_available" }, 409);
+    return json({ upgradeStatus: "declined" });
+  }
+
+  if (!["requested", "awaiting_payment"].includes(consultation.upgrade_status)) return json({ error: "upgrade_not_available" }, 409);
+  if (consultation.upgrade_status === "awaiting_payment") {
+    await synchronizeUpgradePayment(database, consultation.id).catch(() => null);
+    consultation = await authenticateConsultation(database, input.consultationId, input.browserToken);
+    if (consultation.upgrade_status === "completed") return json({ upgradeStatus: "completed" });
+    const pending = await database.query(
+      `SELECT confirmation_url FROM payments
+       WHERE consultation_id = $1 AND purpose = 'tariff_upgrade' AND status IN ('pending', 'waiting_for_capture')
+       ORDER BY created_at DESC LIMIT 1`,
+      [consultation.id],
+    );
+    if (pending.rows[0]?.confirmation_url) return json({ upgradeStatus: "awaiting_payment", confirmationUrl: pending.rows[0].confirmation_url });
+  }
+
+  const claim = await database.query(
+    `UPDATE consultations SET upgrade_status = 'awaiting_payment', updated_at = now()
+     WHERE id = $1 AND upgrade_status = 'requested' RETURNING id`,
+    [consultation.id],
+  );
+  if (!claim.rows[0]) return json({ error: "upgrade_not_available" }, 409);
+  const paymentId = randomUUID();
+  const idempotencyKey = randomUUID();
+  const upgradeTariff = {
+    code: "detailed-review-upgrade",
+    name: "Доплата до тарифа «Расчёт и подробный разбор»",
+    amountKopecks: UPGRADE_AMOUNT_KOPECKS,
+    deadlineMinutes: consultation.tariff_code.endsWith("-urgent") ? 120 : 480,
+  };
+  try {
+    await database.query(
+      `INSERT INTO payments (id, consultation_id, idempotency_key, amount_kopecks, purpose)
+       VALUES ($1, $2, $3, $4, 'tariff_upgrade')`,
+      [paymentId, consultation.id, idempotencyKey, UPGRADE_AMOUNT_KOPECKS],
+    );
+    const payment = await createYooKassaPayment({ consultationId: consultation.id, idempotencyKey, amountKopecks: UPGRADE_AMOUNT_KOPECKS, tariff: upgradeTariff, purpose: "tariff_upgrade" });
+    const confirmationUrl = payment?.confirmation?.confirmation_url;
+    if (!payment?.id || !confirmationUrl || !confirmationUrl.startsWith("https://")) throw new Error("invalid_yookassa_response");
+    await database.query(
+      `UPDATE payments SET provider_payment_id = $1, status = $2, confirmation_url = $3, updated_at = now() WHERE id = $4`,
+      [payment.id, payment.status ?? "pending", confirmationUrl, paymentId],
+    );
+    return json({ upgradeStatus: "awaiting_payment", confirmationUrl, amountKopecks: UPGRADE_AMOUNT_KOPECKS }, 201);
+  } catch (error) {
+    await database.query("UPDATE payments SET status = 'cancelled', updated_at = now() WHERE id = $1", [paymentId]);
+    await database.query("UPDATE consultations SET upgrade_status = 'requested', updated_at = now() WHERE id = $1", [consultation.id]);
+    const status = error?.status === 401 ? 503 : 502;
+    return json({ error: "payment_provider_unavailable" }, status);
+  }
+}
+
 async function consultationStatus(request) {
   if (!allowRequest("status", request, 30)) return json({ error: "too_many_requests" }, 429);
   const input = await body(request);
@@ -427,11 +549,16 @@ async function consultationStatus(request) {
   if (consultation.status === "awaiting_payment") {
     await synchronizePayment(database, consultation.id).catch(() => null);
   }
+  if (consultation.upgrade_status === "awaiting_payment") {
+    await synchronizeUpgradePayment(database, consultation.id).catch(() => null);
+  }
   const fresh = await authenticateConsultation(database, input.consultationId, input.browserToken);
   return json({
     status: fresh.status,
     answerDueAt: fresh.answer_due_at,
     answerReady: fresh.status === "answered",
+    upgradeStatus: fresh.upgrade_status,
+    upgradeAmountKopecks: UPGRADE_AMOUNT_KOPECKS,
     tariff: fresh.tariff_code ? {
       code: fresh.tariff_code,
       name: fresh.tariff_name,
@@ -536,6 +663,23 @@ function consultantAuthorized(request) {
   return authorization.startsWith("Bearer ") && consultantKeyMatches(authorization.slice(7));
 }
 
+async function consultantRequestUpgrade(request) {
+  if (!allowRequest("consultant-upgrade", request, 20) || !consultantAuthorized(request)) return json({ error: "unauthorized" }, 401);
+  const input = await body(request);
+  if (!validUuid(input.consultationId)) return json({ error: "invalid_consultation" }, 400);
+  const database = getDatabasePool();
+  const result = await database.query(
+    `UPDATE consultations
+     SET upgrade_status = 'requested', upgrade_requested_at = now(), updated_at = now()
+     WHERE id = $1 AND status = 'question_submitted' AND tariff_code LIKE 'situation-check%'
+       AND upgrade_status IS NULL
+     RETURNING id`,
+    [input.consultationId],
+  );
+  if (!result.rows[0]) return json({ error: "upgrade_not_available" }, 409);
+  return json({ upgradeStatus: "requested" });
+}
+
 async function consultantList(request) {
   if (!allowRequest("consultant", request, 30) || !consultantAuthorized(request)) {
     return json({ error: "unauthorized" }, 401);
@@ -545,7 +689,8 @@ async function consultantList(request) {
   const result = await database.query(
     `SELECT c.id, c.status, c.answer_due_at, c.answer_opened_at, c.created_at, c.archived_at,
             c.tariff_code, c.tariff_name, c.tariff_amount_kopecks, c.tariff_deadline_minutes,
-            c.tariff_assessment, c.tariff_assessment_confirmed,
+            c.tariff_assessment, c.tariff_assessment_confirmed, c.upgrade_status,
+            c.upgrade_requested_at, c.upgrade_completed_at,
             visitor.ciphertext, visitor.encryption_iv, visitor.authentication_tag,
             answer.ciphertext AS answer_ciphertext,
             answer.encryption_iv AS answer_encryption_iv,
@@ -613,6 +758,9 @@ async function consultantList(request) {
       } : null,
       tariffAssessment: Array.isArray(row.tariff_assessment) ? row.tariff_assessment : [],
       tariffAssessmentConfirmed: row.tariff_assessment_confirmed === true,
+      upgradeStatus: row.upgrade_status,
+      upgradeRequestedAt: row.upgrade_requested_at,
+      upgradeCompletedAt: row.upgrade_completed_at,
       createdAt: row.created_at,
       archivedAt: row.archived_at,
       question: decryptMessage(row.id, "visitor", row),
@@ -637,7 +785,7 @@ async function consultantPendingSummary(request) {
   }
   const database = getDatabasePool();
   const result = await database.query(
-    `SELECT id, status, answer_opened_at, created_at
+    `SELECT id, status, answer_opened_at, upgrade_status, created_at
      FROM consultations
      WHERE status IN ('question_submitted', 'answered')
      ORDER BY created_at DESC
@@ -650,6 +798,7 @@ async function consultantPendingSummary(request) {
     active: result.rows.map((row) => ({
       id: row.id,
       status: row.status === "answered" && row.answer_opened_at ? "received" : row.status,
+      upgradeStatus: row.upgrade_status,
     })),
   });
 }
@@ -748,10 +897,13 @@ async function consultantAnswer(request) {
   }
   const database = getDatabasePool();
   const consultation = await database.query(
-    "SELECT id FROM consultations WHERE id = $1 AND status IN ('question_submitted', 'answered')",
+    "SELECT id, upgrade_status FROM consultations WHERE id = $1 AND status IN ('question_submitted', 'answered')",
     [input.consultationId],
   );
   if (!consultation.rows[0]) return json({ error: "not_found" }, 404);
+  if (["requested", "awaiting_payment"].includes(consultation.rows[0].upgrade_status)) {
+    return json({ error: "upgrade_decision_pending" }, 409);
+  }
   const encrypted = encryptMessage(input.consultationId, "consultant", answerWithNotice);
   const client = await database.connect();
   try {
@@ -928,11 +1080,12 @@ async function webhook(request) {
   if (input?.event !== "payment.succeeded" || typeof paymentId !== "string") return json({ accepted: true });
   const database = getDatabasePool();
   const local = await database.query(
-    "SELECT consultation_id FROM payments WHERE provider_payment_id = $1",
+    "SELECT consultation_id, purpose FROM payments WHERE provider_payment_id = $1",
     [paymentId],
   );
   if (!local.rows[0]) return json({ accepted: true });
-  await synchronizePayment(database, local.rows[0].consultation_id);
+  if (local.rows[0].purpose === "tariff_upgrade") await synchronizeUpgradePayment(database, local.rows[0].consultation_id);
+  else await synchronizePayment(database, local.rows[0].consultation_id);
   return json({ accepted: true });
 }
 
@@ -947,6 +1100,7 @@ export async function routeApi(request) {
     if (route === "POST /api/visits") return registerVisit(request);
     if (route === "POST /api/payments/create") return createPayment(request);
     if (route === "POST /api/consultations/status") return consultationStatus(request);
+    if (route === "POST /api/consultations/upgrade") return consultationUpgradeDecision(request);
     if (route === "POST /api/consultations/question") return saveQuestion(request);
     if (route === "POST /api/consultations/attachments") return attachmentsDisabled();
     if (route === "POST /api/consultations/answer") return openAnswer(request);
@@ -957,6 +1111,7 @@ export async function routeApi(request) {
     if (route === "DELETE /api/consultant/consultations") return consultantDelete(request);
     if (route === "POST /api/consultant/ai-draft") return consultantAiDraft(request);
     if (route === "POST /api/consultant/answer") return consultantAnswer(request);
+    if (route === "POST /api/consultant/request-upgrade") return consultantRequestUpgrade(request);
     if (route === "GET /api/consultant/calculations") return consultantCalculations(request);
     if (route === "POST /api/consultant/calculations") return consultantCalculationCreate(request);
     if (route === "DELETE /api/consultant/calculations") return consultantCalculationDelete(request);

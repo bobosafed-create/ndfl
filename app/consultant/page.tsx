@@ -15,6 +15,9 @@ type Consultation = {
   tariff: { code: string; name: string; amountKopecks: number; deadlineMinutes: number } | null;
   tariffAssessment: string[];
   tariffAssessmentConfirmed: boolean;
+  upgradeStatus: null | "requested" | "declined" | "awaiting_payment" | "completed";
+  upgradeRequestedAt: string | null;
+  upgradeCompletedAt: string | null;
   attachments: { id: string; name: string; mimeType: string; size: number }[];
 };
 
@@ -183,12 +186,13 @@ export default function ConsultantCabinet() {
         if (!response.ok || cancelled) return;
         const result = await response.json();
         const pending: { id: string; createdAt: string }[] = Array.isArray(result.pending) ? result.pending : [];
-        const active: { id: string; status: Consultation["status"] }[] = Array.isArray(result.active) ? result.active : [];
+        const active: { id: string; status: Consultation["status"]; upgradeStatus?: Consultation["upgradeStatus"] }[] = Array.isArray(result.active) ? result.active : [];
         if (active.length > 0) {
           const statusById = new Map(active.map((item) => [item.id, item.status]));
           setConsultations((current) => current.map((item) => {
             const status = statusById.get(item.id);
-            return status && item.status !== "archived" ? { ...item, status } : item;
+            const remote = active.find((entry) => entry.id === item.id);
+            return status && item.status !== "archived" ? { ...item, status, upgradeStatus: remote?.upgradeStatus ?? item.upgradeStatus } : item;
           }));
         }
         const fresh = pending.filter((item) => !knownConsultationIds.current.has(item.id));
@@ -275,6 +279,27 @@ export default function ConsultantCabinet() {
       setMessage("ОТВЕТ ОТПРАВЛЕН В СЕЙФ. Он уже доступен посетителю по персональному коду.");
     } catch {
       setMessage("Не удалось сохранить ответ. Повторите попытку.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function requestTariffUpgrade(consultationId: string) {
+    if (loading) return;
+    setLoading(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/consultant/request-upgrade", {
+        method: "POST",
+        headers: { authorization: `Bearer ${accessKey}`, "content-type": "application/json" },
+        body: JSON.stringify({ consultationId }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "upgrade_failed");
+      setConsultations((current) => current.map((item) => item.id === consultationId ? { ...item, upgradeStatus: "requested", upgradeRequestedAt: new Date().toISOString() } : item));
+      setMessage("Посетителю предложено сохранить краткий тариф или доплатить 600 ₽ за подробный разбор.");
+    } catch {
+      setMessage("Не удалось отправить предложение о доплате. Обновите список и повторите попытку.");
     } finally {
       setLoading(false);
     }
@@ -499,6 +524,7 @@ export default function ConsultantCabinet() {
               <header><div><span className="mini-label">Консультация</span><h2>{selected.status === "archived" ? "Архивная запись" : answerWasSent(selected.status) ? "Выполненная консультация" : "Новый вопрос"}</h2>{selected.tariff && <p className="consultation-tariff">Тариф: <b>{selected.tariff.name}</b> · {(selected.tariff.amountKopecks / 100).toLocaleString("ru-RU")} ₽ · {selected.tariff.deadlineMinutes === 60 ? "1 час" : `${selected.tariff.deadlineMinutes / 60} ч`}</p>}</div><div className={`consultation-status ${answerWasSent(selected.status) ? "answered" : ""} ${selected.status === "received" ? "received" : ""}`}><b>{selected.status === "archived" ? "АРХИВ" : consultationStatusLabel(selected.status)}</b><time>{selected.status === "received" ? "посетитель успешно открыл сейф" : selected.answerDueAt ? `срок до ${new Date(selected.answerDueAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}` : "без срока"}</time></div></header>
               <section className="consultation-document question-document"><h3>Вопрос посетителя</h3><p>{selected.question}</p></section>
               {selected.tariffAssessmentConfirmed && <section className="consultation-tariff-assessment no-print"><h3>Основание выбора тарифа</h3>{selected.tariffAssessment.length > 0 ? <ul>{selected.tariffAssessment.map((item) => <li key={item}>{tariffAssessmentLabels[item] ?? item}</li>)}</ul> : <p>Посетитель подтвердил: один объект или одна операция, без сложного расчёта и сравнения вариантов.</p>}</section>}
+              {selected.status === "question_submitted" && (selected.tariff?.code.startsWith("situation-check") || selected.upgradeStatus !== null) && <section className={`consultation-upgrade-status ${selected.upgradeStatus ?? "available"} no-print`}><h3>Соответствие тарифа вопросу</h3>{selected.upgradeStatus === null && <><p>Если вопрос выходит за рамки краткой проверки, предложите посетителю выбор: оставить исходный объём либо доплатить 600 ₽.</p><button type="button" disabled={loading} onClick={() => void requestTariffUpgrade(selected.id)}>Требуется подробный разбор</button></>}{selected.upgradeStatus === "requested" && <p><b>Ожидается выбор посетителя.</b> Ответ пока не отправляйте.</p>}{selected.upgradeStatus === "awaiting_payment" && <p><b>Посетитель выбрал доплату 600 ₽.</b> Ожидается подтверждение платежа.</p>}{selected.upgradeStatus === "declined" && <p><b>Посетитель оставил тариф 390 ₽.</b> Подготовьте краткий ответ в первоначальном объёме.</p>}{selected.upgradeStatus === "completed" && <p><b>Доплата получена.</b> Подготовьте подробный разбор; срок рассчитан заново от момента оплаты.</p>}</section>}
               {selected.attachments.length > 0 && <section className="consultation-attachments no-print"><h3>Приложенные документы</h3>{selected.attachments.map((attachment) => <button type="button" key={attachment.id} onClick={() => void downloadAttachment(attachment)}><span>📎 {attachment.name}</span><small>{(attachment.size / 1024).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} КБ · скачать</small></button>)}</section>}
               {selected.status === "archived" ? <section className="consultation-document answer-document"><h3>Ответ консультанта</h3><p>{selected.answer || "Ответ отсутствует."}</p></section> : <>
                 <div className="ai-draft-actions no-print">
@@ -512,7 +538,7 @@ export default function ConsultantCabinet() {
                 <p className="answer-auto-note no-print">При отправке в конец ответа автоматически добавляется пометка о том, что вывод основан на предоставленных данных, а дополнительные сведения оформляются новым вопросом.</p>
                 <section className="consultation-document answer-document print-only"><h3>Ответ консультанта</h3><p>{selectedAnswer}</p></section>
               </>}
-              <footer className="consultation-editor-actions no-print"><button className="print-button" type="button" onClick={() => window.print()}>Печать</button>{selected.status === "archived" ? <button className="restore-button" type="button" disabled={loading} onClick={() => void setArchived(selected.id, false)}>Вернуть из архива</button> : answerWasSent(selected.status) ? <button className="archive-button" type="button" disabled={loading} onClick={() => void setArchived(selected.id, true)}>В архив</button> : null}<button className="delete-button" type="button" disabled={loading} onClick={() => void deleteConsultation(selected.id)}>Удалить вопрос и ответ</button>{selected.status !== "archived" && <><span>{selectedAnswer.length} / 14000</span><button className="action-button" disabled={selectedAnswer.trim().length < 10 || loading} onClick={() => void saveAnswer(selected.id)}>{answerWasSent(selected.status) ? "Обновить ответ в сейфе" : "Отправить в сейф"}</button></>}</footer>
+              <footer className="consultation-editor-actions no-print"><button className="print-button" type="button" onClick={() => window.print()}>Печать</button>{selected.status === "archived" ? <button className="restore-button" type="button" disabled={loading} onClick={() => void setArchived(selected.id, false)}>Вернуть из архива</button> : answerWasSent(selected.status) ? <button className="archive-button" type="button" disabled={loading} onClick={() => void setArchived(selected.id, true)}>В архив</button> : null}<button className="delete-button" type="button" disabled={loading} onClick={() => void deleteConsultation(selected.id)}>Удалить вопрос и ответ</button>{selected.status !== "archived" && <><span>{selectedAnswer.length} / 14000</span><button className="action-button" disabled={selectedAnswer.trim().length < 10 || loading || selected.upgradeStatus === "requested" || selected.upgradeStatus === "awaiting_payment"} onClick={() => void saveAnswer(selected.id)}>{selected.upgradeStatus === "requested" || selected.upgradeStatus === "awaiting_payment" ? "Ожидается решение посетителя" : answerWasSent(selected.status) ? "Обновить ответ в сейфе" : "Отправить в сейф"}</button></>}</footer>
             </article>
           )}
           {incomingAlert && <aside className="incoming-alert" role="alertdialog" aria-live="assertive" aria-labelledby="incoming-alert-title"><button className="incoming-alert-close" type="button" aria-label="Закрыть напоминание" onClick={() => setIncomingAlert(null)}>×</button><span className="incoming-alert-icon" aria-hidden="true">!</span><small>Новое обращение</small><h2 id="incoming-alert-title">{incomingAlert.count === 1 ? "Поступил новый вопрос" : `Поступили новые вопросы: ${incomingAlert.count}`}</h2><p>Откройте обращение и проверьте подготовленный черновик ответа.</p><div><button className="action-button" type="button" onClick={() => void openIncomingAlert()}>Открыть вопрос</button><button className="incoming-alert-later" type="button" onClick={() => setIncomingAlert(null)}>Позже</button></div></aside>}

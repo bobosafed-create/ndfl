@@ -122,7 +122,7 @@ test("new-question polling is authenticated and does not return question text", 
   assert.match(router, /consultantPendingSummary/);
   assert.match(router, /GET \/api\/consultant\/pending-summary/);
   assert.match(router, /allowRequest\("consultant-alerts"/);
-  assert.match(router, /SELECT id, status, answer_opened_at, created_at\s+FROM consultations\s+WHERE status IN \('question_submitted', 'answered'\)/);
+  assert.match(router, /SELECT id, status, answer_opened_at, upgrade_status, created_at\s+FROM consultations\s+WHERE status IN \('question_submitted', 'answered'\)/);
   assert.doesNotMatch(router, /pending: result\.rows\.map\(\(row\) => \(\{[\s\S]*question:/);
   assert.match(router, /consultantAuthorized\(request\)/);
 });
@@ -295,4 +295,34 @@ test("opening the safe records visitor receipt without losing the answer lifecyc
   assert.match(cabinet, /ОТВЕТ ПОЛУЧЕН, КОНСУЛЬТАЦИЯ ЗАВЕРШЕНА/);
   assert.match(cabinet, /посетитель успешно открыл сейф/);
   assert.match(cabinet, /status === "received"/);
+});
+
+test("tariff upgrade is an authenticated separate 600-ruble payment", async () => {
+  const router = await readFile(new URL("../api/router.mjs", import.meta.url), "utf8");
+  const yookassa = await readFile(new URL("../lib/yookassa.mjs", import.meta.url), "utf8");
+  assert.match(router, /const UPGRADE_AMOUNT_KOPECKS = CONSULTATION_TARIFFS\[1\]\.amountKopecks - CONSULTATION_TARIFFS\[0\]\.amountKopecks/);
+  assert.match(router, /authenticateConsultation\(database, input\.consultationId, input\.browserToken\)/);
+  assert.match(router, /purpose = 'tariff_upgrade'/);
+  assert.match(router, /amountKopecks: UPGRADE_AMOUNT_KOPECKS/);
+  assert.match(router, /purpose: "tariff_upgrade"/);
+  assert.match(yookassa, /payment_purpose: purpose/);
+  assert.match(yookassa, /purpose === "tariff_upgrade" \? "upgrade-return" : "return"/);
+});
+
+test("upgrade decision cannot be duplicated and resets the response deadline only after success", async () => {
+  const router = await readFile(new URL("../api/router.mjs", import.meta.url), "utf8");
+  assert.match(router, /WHERE id = \$1 AND upgrade_status = 'requested' RETURNING id/);
+  assert.match(router, /upgrade_status = 'completed', upgrade_completed_at = now\(\)/);
+  assert.match(router, /answer_due_at = now\(\) \+ CASE WHEN tariff_code LIKE '%-urgent' THEN interval '2 hours' ELSE interval '8 hours' END/);
+  assert.match(router, /upgrade_status = 'awaiting_payment'/);
+  assert.match(router, /\["requested", "awaiting_payment"\]\.includes\(consultation\.rows\[0\]\.upgrade_status\)/);
+  assert.doesNotMatch(router, /refundPayment|createRefund|\/refunds/);
+});
+
+test("only an authenticated consultant can request an upgrade", async () => {
+  const router = await readFile(new URL("../api/router.mjs", import.meta.url), "utf8");
+  assert.match(router, /async function consultantRequestUpgrade/);
+  assert.match(router, /allowRequest\("consultant-upgrade"/);
+  assert.match(router, /consultantAuthorized\(request\)/);
+  assert.match(router, /POST \/api\/consultant\/request-upgrade/);
 });

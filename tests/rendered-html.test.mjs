@@ -177,6 +177,9 @@ test("keeps consultation codes four digits and uses the protected payment flow",
   assert.match(page, /document\.addEventListener\("visibilitychange", checkVisibleStatus\)/);
   assert.match(page, /ОТВЕТ ПОЛУЧЕН/);
   assert.match(page, /Введите код от сейфа/);
+  assert.match(page, /Оставить тариф 390 ₽/);
+  assert.match(page, /Доплатить 600 ₽/);
+  assert.match(page, /\/api\/consultations\/upgrade/);
 });
 
 test("sets the selected tariff deadline when the visitor saves a question", async () => {
@@ -199,6 +202,8 @@ test("legal documents describe the anonymous mode without hiding technical proce
   assert.match(legal, /Расчёт и подробный разбор/);
   assert.match(legal, /Допопция «Срочно» стоит 300 рублей/);
   assert.match(legal, /не ограничивает обязательные права потребителя/);
+  assert.match(legal, /добровольно доплатить 600 рублей/);
+  assert.match(legal, /автоматический возврат первоначального платежа не производится/);
 });
 
 test("renders the consultant cabinet", async () => {
@@ -245,6 +250,10 @@ test("renders the consultant cabinet", async () => {
   assert.match(page, /status: "answered"/);
   assert.match(page, /"answered" \| "received"/);
   assert.match(page, /Обновить ответ в сейфе/);
+  assert.match(page, /Требуется подробный разбор/);
+  assert.match(page, /Ожидается выбор посетителя/);
+  assert.match(page, /Доплата получена/);
+  assert.match(page, /\/api\/consultant\/request-upgrade/);
   assert.doesNotMatch(page, /Старые тестовые записи|Тестовых записей нет|не являются платежами ЮKassa/);
 });
 
