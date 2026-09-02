@@ -767,6 +767,7 @@ async function consultantAiDraft(request) {
 
   const input = await body(request);
   if (!validUuid(input.consultationId)) return json({ error: "invalid_consultation" }, 400);
+  const draftMode = input.mode === "detailed" ? "detailed" : "brief";
   const regenerate = input.regenerate === true;
   const database = getDatabasePool();
   const result = await database.query(
@@ -794,7 +795,7 @@ async function consultantAiDraft(request) {
 
   const question = decryptMessage(consultation.id, "visitor", consultation);
   try {
-    const draft = await createConsultationDraft(question);
+    const draft = await createConsultationDraft(question, draftMode);
     const encrypted = encryptMessage(consultation.id, "ai_draft", draft);
     await database.query(
       `INSERT INTO consultation_messages
@@ -807,7 +808,7 @@ async function consultantAiDraft(request) {
                      created_at = now()`,
       [randomUUID(), consultation.id, encrypted.ciphertext, encrypted.iv, encrypted.authenticationTag],
     );
-    return json({ draft, cached: false });
+    return json({ draft, mode: draftMode, cached: false });
   } catch (error) {
     console.error(`GigaChat draft request failed: ${error?.code ?? "unknown_error"}; stage=${error?.stage ?? "unknown"}; status=${error?.status ?? "none"}`);
     if (error?.code === "gigachat_auth_failed" || error?.code === "gigachat_auth_empty") {

@@ -173,7 +173,9 @@ test("GigaChat drafts are server-side, authenticated and never sent directly to 
   assert.doesNotMatch(ai, /qwen/i);
   assert.doesNotMatch(cabinet, /GIGACHAT_AUTHORIZATION_KEY/);
   assert.match(cabinet, /Подготовить черновик в GigaChat/);
-  assert.match(cabinet, /GigaChat готовит черновик/);
+  assert.match(cabinet, /Подготовить детализированный черновик в GigaChat/);
+  assert.match(cabinet, /amountKopecks === 99_000 \? "detailed" : "brief"/);
+  assert.match(cabinet, /GigaChat готовит (?:краткий|детализированный) черновик/);
   assert.match(cabinet, /Отправить в сейф/);
   assert.match(router, /ai_payment_required/);
   assert.match(router, /error\?\.status === 402/);
@@ -211,13 +213,20 @@ test("GigaChat exchanges the authorization key for a cached OAuth token", async 
   };
   try {
     const { createConsultationDraft } = await import(`../lib/ai.mjs?oauth-test=${Date.now()}`);
-    await createConsultationDraft("Первый обезличенный вопрос");
-    await createConsultationDraft("Второй обезличенный вопрос");
+    await createConsultationDraft("Первый обезличенный вопрос", "brief");
+    await createConsultationDraft("Второй обезличенный вопрос", "detailed");
     assert.equal(calls.filter((call) => call.url.includes("/api/v2/oauth")).length, 1);
     assert.equal(calls.filter((call) => call.url.includes("/chat/completions")).length, 2);
     assert.equal(calls[0].options.headers.authorization, "Basic test-authorization-key");
     assert.match(String(calls[0].options.body), /scope=GIGACHAT_API_PERS/);
     assert.equal(calls[1].options.headers.authorization, "Bearer temporary-access-token");
+    assert.deepEqual(
+      calls.slice(1).map((call) => {
+        const request = JSON.parse(String(call.options.body));
+        return [request.max_tokens, request.temperature, request.repetition_penalty];
+      }),
+      [[2200, 0.2, 1], [6000, 0.3, 1.05]],
+    );
   } finally {
     globalThis.fetch = originalFetch;
     if (originalKey === undefined) delete process.env.GIGACHAT_AUTHORIZATION_KEY;
@@ -229,8 +238,14 @@ test("GigaChat exchanges the authorization key for a cached OAuth token", async 
 
 test("the research agent receives enough time and space for a detailed tax draft", async () => {
   const ai = await readFile(new URL("../lib/ai.mjs", import.meta.url), "utf8");
+  const router = await readFile(new URL("../api/router.mjs", import.meta.url), "utf8");
   assert.match(ai, /180_000/);
-  assert.match(ai, /max_tokens: 4500/);
+  assert.match(ai, /maxTokens: 2200/);
+  assert.match(ai, /maxTokens: 6000/);
+  assert.match(ai, /repetition_penalty: generation\.repetitionPenalty/);
+  assert.match(ai, /Целевой объём — 8 000–14 000 знаков/);
+  assert.match(router, /input\.mode === "detailed" \? "detailed" : "brief"/);
+  assert.match(router, /createConsultationDraft\(question, draftMode\)/);
   assert.match(ai, /publication\.pravo\.gov\.ru/);
   assert.match(ai, /nalog\.gov\.ru/);
   assert.match(ai, /minfin\.gov\.ru/);
