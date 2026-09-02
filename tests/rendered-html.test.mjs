@@ -40,6 +40,14 @@ test("server-renders the consultation landing page", async () => {
   assert.match(html, /ОПЛАТИТЬ/);
   assert.match(html, /Проверка ситуации/);
   assert.match(html, /Расчёт и подробный разбор/);
+  assert.match(html, /Подходит, если требуется/);
+  assert.match(html, /один объект или одну операцию/);
+  assert.match(html, /без сравнения нескольких вариантов и сложного расчёта/);
+  assert.match(html, /Назначается, если требуется хотя бы одно/);
+  assert.match(html, /точный расчёт налога или возврата/);
+  assert.match(html, /несколько сделок, объектов или лет/);
+  assert.match(html, /сальдирование убытков/);
+  assert.match(html, /подробное нормативное обоснование/);
   assert.match(html, /Срочно/);
   assert.match(html, /Как обстоятельства меняют результат/);
   assert.doesNotMatch(html, /Входит ли в консультацию дополнительный уточняющий вопрос/);
@@ -150,7 +158,11 @@ test("keeps consultation codes four digits and uses the protected payment flow",
   assert.match(page, /isServiceOpen\(serviceSchedule\)/);
   assert.match(page, /questions_unavailable/);
   assert.match(page, /<span>ОПЛАТИТЬ<\/span><strong>\{priceLabel\}<\/strong>/);
-  assert.match(page, /body: JSON\.stringify\(\{ tariffCode: selectedTariffCode, urgent: urgentSelected \}\)/);
+  assert.match(page, /tariffAssessment: \{ confirmed: tariffAssessmentCompleted, flags: tariffAssessmentFlags \}/);
+  assert.match(page, /Подберём минимально подходящий тариф/);
+  assert.match(page, /Ничего из перечисленного не требуется/);
+  assert.match(page, /Не подходит по ответам/);
+  assert.match(page, /requiresDetailedTariff && selectedTariffCode !== "detailed-review"/);
   assert.match(page, /ndfl-calculator-tariff/);
   assert.match(page, /setSelectedTariffCode\("situation-check"\)/);
   assert.match(page, /Выключите VPN, если он включён/);
@@ -210,6 +222,8 @@ test("renders the consultant cabinet", async () => {
   assert.match(page, /consultant\/attachments/);
   assert.match(page, /Тарифы фиксированы в коде сайта/);
   assert.match(page, /Тариф:/);
+  assert.match(page, /Основание выбора тарифа/);
+  assert.match(page, /tariffAssessmentConfirmed/);
   assert.match(page, /Допопция «Срочно»/);
   assert.match(page, /\/api\/consultant\/settings/);
   assert.match(page, /\/api\/consultant\/pending-summary/);

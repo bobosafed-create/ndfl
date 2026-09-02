@@ -23,6 +23,48 @@ const fallbackTariffs: Tariff[] = [
 
 const fallbackUrgentAddon: UrgentAddon = { code: "urgent", name: "Срочно", description: "Письменный результат в течение 2 часов", amountKopecks: 30000, deadlineMinutes: 120, available: true };
 
+const tariffCriteria: Record<string, { heading: string; items: string[] }> = {
+  "situation-check": {
+    heading: "Подходит, если требуется:",
+    items: [
+      "разобрать один объект или одну операцию",
+      "определить обязанность подать 3-НДФЛ",
+      "предварительно проверить право на вычет",
+      "получить краткий письменный вывод",
+      "получить общий порядок действий",
+      "обойтись без сравнения нескольких вариантов и сложного расчёта",
+    ],
+  },
+  "detailed-review": {
+    heading: "Назначается, если требуется хотя бы одно:",
+    items: [
+      "точный расчёт налога или возврата",
+      "разобрать несколько сделок, объектов или лет",
+      "сравнить способы уменьшения налога",
+      "распределить вычет между супругами",
+      "разобрать инвестиции, иностранные доходы или данные нескольких брокеров",
+      "провести сальдирование убытков",
+      "проанализировать требование или уведомление ФНС",
+      "подготовить подробное нормативное обоснование",
+      "ответить на несколько связанных вопросов",
+    ],
+  },
+};
+
+const tariffAssessmentQuestions = [
+  { id: "exact-calculation", label: "Нужен точный расчёт налога или возврата" },
+  { id: "multiple-items", label: "Есть несколько сделок, объектов или налоговых периодов" },
+  { id: "compare-options", label: "Нужно сравнить несколько способов уменьшения налога" },
+  { id: "spouses", label: "Нужно распределить вычет между супругами" },
+  { id: "investments", label: "Есть инвестиции, иностранные доходы или несколько брокеров" },
+  { id: "loss-offset", label: "Нужно провести сальдирование убытков" },
+  { id: "tax-notice", label: "Нужно проанализировать требование или уведомление ФНС" },
+  { id: "legal-detail", label: "Нужно подробное нормативное обоснование" },
+  { id: "multiple-questions", label: "В обращении несколько связанных вопросов" },
+] as const;
+
+type TariffAssessmentId = typeof tariffAssessmentQuestions[number]["id"];
+
 const situations = [
   { slug: "prodazha-kvartiry", title: "Продал квартиру", text: "Срок владения, расходы, вычет и обязанность подать 3-НДФЛ.", diagnostic: "Для ситуации «Продал квартиру» важны: минимальный срок владения, правило 70% кадастровой стоимости, оптимизация налогооблагаемой базы, сроки отчётности и оплаты, сохранность документов и сроки их хранения.", path: "/prodazha-kvartiry/", published: false },
   { slug: "prodazha-avtomobilya", title: "Продал автомобиль", text: "Нужно ли декларировать доход и можно ли учесть стоимость покупки.", diagnostic: "Для ситуации «Продал автомобиль» важны: срок владения, сумма продажи, расчёт налогооблагаемой базы — уменьшение суммы продажи на стандартный вычет или на сумму документально подтверждённых расходов, сроки отчётности и оплаты.", path: "/prodazha-avtomobilya/", published: false },
@@ -114,6 +156,9 @@ export default function Home() {
   const [paymentMessage, setPaymentMessage] = useState("");
   const [tariffs, setTariffs] = useState<Tariff[]>(fallbackTariffs);
   const [selectedTariffCode, setSelectedTariffCode] = useState("situation-check");
+  const [tariffAssessmentFlags, setTariffAssessmentFlags] = useState<TariffAssessmentId[]>([]);
+  const [simpleAssessmentConfirmed, setSimpleAssessmentConfirmed] = useState(false);
+  const [tariffAssessmentMessage, setTariffAssessmentMessage] = useState("");
   const [urgentAddon, setUrgentAddon] = useState<UrgentAddon>(fallbackUrgentAddon);
   const [urgentSelected, setUrgentSelected] = useState(false);
   const [diagnosticSituation, setDiagnosticSituation] = useState("");
@@ -130,6 +175,8 @@ export default function Home() {
   const selectedDeadline = urgentSelected ? tariffDeadline(urgentAddon.deadlineMinutes) : selectedTariff ? tariffDeadline(selectedTariff.deadlineMinutes) : tariffDeadline(fallbackTariffs[0].deadlineMinutes);
   const answerPages = useMemo(() => paginateAnswer(answer), [answer]);
   const serviceScheduleText = useMemo(() => formatServiceSchedule(serviceSchedule), [serviceSchedule]);
+  const requiresDetailedTariff = tariffAssessmentFlags.length > 0;
+  const tariffAssessmentCompleted = simpleAssessmentConfirmed || requiresDetailedTariff;
   const processStep = stage === "room" ? 1 : stage === "payment" ? 2 : stage === "question" ? 3 : stage === "waiting" && codeNoticeVisible ? 4 : 5;
 
   function processStepClass(step: number) {
@@ -190,10 +237,16 @@ export default function Home() {
         const calculatorTariff = window.sessionStorage.getItem("ndfl-calculator-tariff");
         if (calculatorTariff === "urgent") {
           setSelectedTariffCode("detailed-review");
+          setTariffAssessmentFlags(["exact-calculation"]);
+          setSimpleAssessmentConfirmed(false);
           setUrgentSelected(true);
           window.sessionStorage.removeItem("ndfl-calculator-tariff");
         } else if (calculatorTariff && result.tariffs.some((tariff: Tariff) => tariff.code === calculatorTariff && tariff.available !== false)) {
           setSelectedTariffCode(calculatorTariff);
+          if (calculatorTariff === "detailed-review") {
+            setTariffAssessmentFlags(["exact-calculation"]);
+            setSimpleAssessmentConfirmed(false);
+          }
           window.sessionStorage.removeItem("ndfl-calculator-tariff");
         }
         if (result.tariffs.some((tariff: Tariff) => tariff.code === selectedTariffCode && tariff.available === false)) setSelectedTariffCode("situation-check");
@@ -271,7 +324,7 @@ export default function Home() {
       const response = await fetch("/api/payments/create", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ tariffCode: selectedTariffCode, urgent: urgentSelected }),
+        body: JSON.stringify({ tariffCode: selectedTariffCode, urgent: urgentSelected, tariffAssessment: { confirmed: tariffAssessmentCompleted, flags: tariffAssessmentFlags } }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "payment_failed");
@@ -290,6 +343,15 @@ export default function Home() {
       if (error instanceof Error && error.message === "questions_unavailable") {
         setStage("room");
         setScheduleNoticeVisible(true);
+      } else if (error instanceof Error && error.message === "tariff_assessment_required") {
+        setStage("room");
+        setTariffAssessmentMessage("Перед оплатой подтвердите условия подбора тарифа.");
+        document.getElementById("tariff-assessment")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      } else if (error instanceof Error && error.message === "detailed_tariff_required") {
+        setStage("room");
+        setSelectedTariffCode("detailed-review");
+        setTariffAssessmentMessage("По отмеченным условиям доступен тариф «Расчёт и подробный разбор».");
+        document.getElementById("tariff-options")?.scrollIntoView({ behavior: "smooth", block: "center" });
       } else {
         setPaymentMessage(error instanceof Error && error.message === "urgent_tariff_unavailable"
           ? "Допопция «Срочно» сейчас временно недоступна. Оформите обычный срок или повторите позже."
@@ -301,6 +363,17 @@ export default function Home() {
 
   async function beginPayment() {
     if (busy) return;
+    if (!tariffAssessmentCompleted) {
+      setTariffAssessmentMessage("Сначала отметьте признаки вашей ситуации — сайт подберёт минимально подходящий тариф.");
+      document.getElementById("tariff-assessment")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    if (requiresDetailedTariff && selectedTariffCode !== "detailed-review") {
+      setSelectedTariffCode("detailed-review");
+      setTariffAssessmentMessage("По отмеченным условиям требуется тариф «Расчёт и подробный разбор».");
+      document.getElementById("tariff-options")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
     setBusy(true);
     let latestSchedule: ScheduleDay[] | null = null;
     try {
@@ -325,6 +398,29 @@ export default function Home() {
   function showSchedule() {
     setScheduleNoticeVisible(false);
     document.getElementById("pricing-heading")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function toggleTariffAssessment(id: TariffAssessmentId, checked: boolean) {
+    setTariffAssessmentFlags((current) => {
+      const next = checked ? [...current, id] : current.filter((item) => item !== id);
+      return [...new Set(next)];
+    });
+    if (checked) {
+      setSelectedTariffCode("detailed-review");
+      setSimpleAssessmentConfirmed(false);
+    }
+    setTariffAssessmentMessage(checked ? "Отмечен признак подробного разбора — выбран тариф 990 ₽." : "");
+  }
+
+  function confirmSimpleAssessment(checked: boolean) {
+    setSimpleAssessmentConfirmed(checked);
+    if (checked) {
+      setTariffAssessmentFlags([]);
+      setSelectedTariffCode("situation-check");
+      setTariffAssessmentMessage("По указанным условиям достаточно тарифа 390 ₽. При желании можно выбрать подробный разбор.");
+    } else {
+      setTariffAssessmentMessage("");
+    }
   }
 
   function downloadAnswer() {
@@ -440,6 +536,9 @@ export default function Home() {
     setCodeNoticeVisible(false);
     setCodeNoticeSeconds(10);
     setSafeMessage("");
+    setTariffAssessmentFlags([]);
+    setSimpleAssessmentConfirmed(false);
+    setTariffAssessmentMessage("");
     setConsultationId("");
     setBrowserToken("");
     setAnswer("");
@@ -553,17 +652,29 @@ export default function Home() {
 
       <section className="pricing-section" aria-labelledby="pricing-heading">
         <div className="pricing-heading"><h2 id="pricing-heading">Выберите формат работы</h2><div className="service-hours"><b>Приём вопросов</b><strong>{serviceScheduleText}</strong><em>Время московское</em><span>Допопция «Срочно» в отдельные часы может быть недоступна.</span></div></div>
+        <fieldset id="tariff-assessment" className="tariff-assessment">
+          <legend>Подберём минимально подходящий тариф</legend>
+          <p>Отметьте всё, что относится к вашему вопросу. Если подходит хотя бы один пункт, потребуется подробный разбор.</p>
+          <div className="tariff-assessment-grid">{tariffAssessmentQuestions.map((item) => <label key={item.id} className={tariffAssessmentFlags.includes(item.id) ? "selected" : ""}><input type="checkbox" checked={tariffAssessmentFlags.includes(item.id)} onChange={(event) => toggleTariffAssessment(item.id, event.target.checked)} /><span>{item.label}</span></label>)}</div>
+          <label className={`tariff-simple-choice ${simpleAssessmentConfirmed ? "selected" : ""}`}><input type="checkbox" checked={simpleAssessmentConfirmed} onChange={(event) => confirmSimpleAssessment(event.target.checked)} /><span><b>Ничего из перечисленного не требуется</b><small>Один объект или одна операция, краткий вывод и общий порядок действий без сложного расчёта.</small></span></label>
+          {tariffAssessmentMessage && <div className={`tariff-assessment-result ${requiresDetailedTariff ? "detailed" : "simple"}`} role="status">{tariffAssessmentMessage}</div>}
+        </fieldset>
         <div id="tariff-options" className="tariff-grid" role="radiogroup" aria-label="Тариф консультации">
-          {tariffs.map((tariff) => <label className={`tariff-card ${selectedTariffCode === tariff.code ? "selected" : ""} ${tariff.available === false ? "unavailable" : ""}`} key={tariff.code}>
-            <input type="radio" name="consultation-tariff" value={tariff.code} checked={selectedTariffCode === tariff.code} disabled={tariff.available === false} onChange={() => setSelectedTariffCode(tariff.code)} />
-            <span className="tariff-radio" aria-hidden="true" />
-            {tariff.available === false ? <b className="tariff-badge unavailable-badge">Временно недоступен</b> : tariff.recommended && <b className="tariff-badge">Рекомендуем</b>}
-            <strong>{tariff.name}</strong><em>{(tariff.amountKopecks / 100).toLocaleString("ru-RU")} ₽</em><small>{tariffDeadline(tariff.deadlineMinutes)}</small><p>{tariff.description}</p>
-          </label>)}
+          {tariffs.map((tariff) => {
+            const assessmentBlocksTariff = tariff.code === "situation-check" && requiresDetailedTariff;
+            const tariffUnavailable = tariff.available === false || assessmentBlocksTariff;
+            return <label className={`tariff-card ${selectedTariffCode === tariff.code ? "selected" : ""} ${tariffUnavailable ? "unavailable" : ""}`} key={tariff.code}>
+              <input type="radio" name="consultation-tariff" value={tariff.code} checked={selectedTariffCode === tariff.code} disabled={tariffUnavailable} onChange={() => setSelectedTariffCode(tariff.code)} />
+              <span className="tariff-radio" aria-hidden="true" />
+              {tariff.available === false ? <b className="tariff-badge unavailable-badge">Временно недоступен</b> : assessmentBlocksTariff ? <b className="tariff-badge unavailable-badge">Не подходит по ответам</b> : tariff.recommended && <b className="tariff-badge">Рекомендуем</b>}
+              <strong>{tariff.name}</strong><em>{(tariff.amountKopecks / 100).toLocaleString("ru-RU")} ₽</em><small>{tariffDeadline(tariff.deadlineMinutes)}</small><p>{tariff.description}</p>
+              {tariffCriteria[tariff.code] && <div className="tariff-criteria"><b>{tariffCriteria[tariff.code].heading}</b><ul>{tariffCriteria[tariff.code].items.map((item) => <li key={item}>{item}</li>)}</ul></div>}
+            </label>;
+          })}
         </div>
         <label className={`urgent-option ${urgentSelected ? "selected" : ""} ${urgentAddon.available === false ? "unavailable" : ""}`}><input type="checkbox" checked={urgentSelected} disabled={urgentAddon.available === false} onChange={(event) => setUrgentSelected(event.target.checked)} /><span><b>Срочно +{(urgentAddon.amountKopecks / 100).toLocaleString("ru-RU")} ₽</b><small>Письменный результат в течение 2 часов. Это допопция к выбранному тарифу.</small></span>{urgentAddon.available === false && <em>Сейчас недоступно</em>}</label>
         <p className="tariff-depth-note">Оба тарифа включают персональный письменный результат и отличаются только глубиной разбора.</p>
-        <div className="tariff-summary" aria-live="polite"><div><span>Выбран тариф «{selectedTariff?.name ?? fallbackTariffs[0].name}»{urgentSelected ? " с допопцией «Срочно»" : ""}</span><strong>К оплате: {priceLabel}</strong><small>{selectedDeadline}</small></div><div><a href="#consultation-door">Далее</a></div></div>
+        <div className="tariff-summary" aria-live="polite"><div><span>{tariffAssessmentCompleted ? `Выбран тариф «${selectedTariff?.name ?? fallbackTariffs[0].name}»${urgentSelected ? " с допопцией «Срочно»" : ""}` : "Сначала пройдите подбор тарифа"}</span><strong>К оплате: {priceLabel}</strong><small>{selectedDeadline}</small></div><div><a href={tariffAssessmentCompleted ? "#consultation-door" : "#tariff-assessment"}>Далее</a></div></div>
         <a className="flow-arrow" href="#consultation-door" aria-label="Перейти к консультации">↓</a>
       </section>
 

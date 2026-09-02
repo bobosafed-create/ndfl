@@ -13,6 +13,8 @@ type Consultation = {
   answer: string | null;
   aiDraft: string | null;
   tariff: { code: string; name: string; amountKopecks: number; deadlineMinutes: number } | null;
+  tariffAssessment: string[];
+  tariffAssessmentConfirmed: boolean;
   attachments: { id: string; name: string; mimeType: string; size: number }[];
 };
 
@@ -27,6 +29,17 @@ const scheduleDayLabels: Record<string, string> = {
   friday: "Пятница", saturday: "Суббота", sunday: "Воскресенье",
 };
 const defaultServiceSchedule: ScheduleDay[] = Object.keys(scheduleDayLabels).map((day, index) => ({ day, enabled: index < 5, start: "09:00", end: "13:00" }));
+const tariffAssessmentLabels: Record<string, string> = {
+  "exact-calculation": "точный расчёт налога или возврата",
+  "multiple-items": "несколько сделок, объектов или налоговых периодов",
+  "compare-options": "сравнение способов уменьшения налога",
+  spouses: "распределение вычета между супругами",
+  investments: "инвестиции, иностранные доходы или несколько брокеров",
+  "loss-offset": "сальдирование убытков",
+  "tax-notice": "анализ требования или уведомления ФНС",
+  "legal-detail": "подробное нормативное обоснование",
+  "multiple-questions": "несколько связанных вопросов",
+};
 
 function aiDraftErrorMessage(error: unknown) {
   if (error === "ai_payment_required") return "GigaChat отклонил запрос из-за тарифа или доступного остатка токенов. Проверьте условия проекта GigaChat API.";
@@ -485,6 +498,7 @@ export default function ConsultantCabinet() {
             <article className={`consultation-editor ${selected.status}`} key={selected.id}>
               <header><div><span className="mini-label">Консультация</span><h2>{selected.status === "archived" ? "Архивная запись" : answerWasSent(selected.status) ? "Выполненная консультация" : "Новый вопрос"}</h2>{selected.tariff && <p className="consultation-tariff">Тариф: <b>{selected.tariff.name}</b> · {(selected.tariff.amountKopecks / 100).toLocaleString("ru-RU")} ₽ · {selected.tariff.deadlineMinutes === 60 ? "1 час" : `${selected.tariff.deadlineMinutes / 60} ч`}</p>}</div><div className={`consultation-status ${answerWasSent(selected.status) ? "answered" : ""} ${selected.status === "received" ? "received" : ""}`}><b>{selected.status === "archived" ? "АРХИВ" : consultationStatusLabel(selected.status)}</b><time>{selected.status === "received" ? "посетитель успешно открыл сейф" : selected.answerDueAt ? `срок до ${new Date(selected.answerDueAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}` : "без срока"}</time></div></header>
               <section className="consultation-document question-document"><h3>Вопрос посетителя</h3><p>{selected.question}</p></section>
+              {selected.tariffAssessmentConfirmed && <section className="consultation-tariff-assessment no-print"><h3>Основание выбора тарифа</h3>{selected.tariffAssessment.length > 0 ? <ul>{selected.tariffAssessment.map((item) => <li key={item}>{tariffAssessmentLabels[item] ?? item}</li>)}</ul> : <p>Посетитель подтвердил: один объект или одна операция, без сложного расчёта и сравнения вариантов.</p>}</section>}
               {selected.attachments.length > 0 && <section className="consultation-attachments no-print"><h3>Приложенные документы</h3>{selected.attachments.map((attachment) => <button type="button" key={attachment.id} onClick={() => void downloadAttachment(attachment)}><span>📎 {attachment.name}</span><small>{(attachment.size / 1024).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} КБ · скачать</small></button>)}</section>}
               {selected.status === "archived" ? <section className="consultation-document answer-document"><h3>Ответ консультанта</h3><p>{selected.answer || "Ответ отсутствует."}</p></section> : <>
                 <div className="ai-draft-actions no-print">

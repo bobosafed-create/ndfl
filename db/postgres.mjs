@@ -193,6 +193,15 @@ const migrations = [
         ON consultations (answer_opened_at DESC) WHERE answer_opened_at IS NOT NULL`,
     ],
   },
+  {
+    version: 11,
+    statements: [
+      `ALTER TABLE consultations
+        ADD COLUMN IF NOT EXISTS tariff_assessment jsonb NOT NULL DEFAULT '[]'::jsonb`,
+      `ALTER TABLE consultations
+        ADD COLUMN IF NOT EXISTS tariff_assessment_confirmed boolean NOT NULL DEFAULT false`,
+    ],
+  },
 ];
 
 function missingDatabaseVariables() {

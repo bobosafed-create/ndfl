@@ -24,6 +24,10 @@ const ANSWER_NOTICE = "Пометка консультанта: Ответ со�
 const MAX_ANSWER_LENGTH = 15000;
 const DEFAULT_BODY_LIMIT_BYTES = 16_384;
 const ANSWER_BODY_LIMIT_BYTES = 65_536;
+const TARIFF_ASSESSMENT_FLAGS = new Set([
+  "exact-calculation", "multiple-items", "compare-options", "spouses", "investments",
+  "loss-offset", "tax-notice", "legal-detail", "multiple-questions",
+]);
 const SCHEDULE_DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 const DEFAULT_SERVICE_SCHEDULE = SCHEDULE_DAYS.map((day, index) => ({
   day,
@@ -104,6 +108,12 @@ async function body(request, maxBytes = DEFAULT_BODY_LIMIT_BYTES) {
 
 function validUuid(value) {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function normalizeTariffAssessment(value) {
+  if (!value || value.confirmed !== true || !Array.isArray(value.flags) || value.flags.length > TARIFF_ASSESSMENT_FLAGS.size) return null;
+  if (value.flags.some((flag) => typeof flag !== "string" || !TARIFF_ASSESSMENT_FLAGS.has(flag))) return null;
+  return [...new Set(value.flags)];
 }
 
 function browserTokenHash(consultationId, token) {
@@ -277,6 +287,8 @@ async function createPayment(request) {
   const defaultAmountKopecks = priceResult.rows[0]?.consultation_price_kopecks ?? 10000;
   const requestedTariffCode = typeof input.tariffCode === "string" ? input.tariffCode.trim() : "";
   const requestedUrgent = input.urgent === true;
+  const tariffAssessment = normalizeTariffAssessment(input.tariffAssessment);
+  if (!tariffAssessment) return json({ error: "tariff_assessment_required" }, 400);
   if (input.urgent !== undefined && typeof input.urgent !== "boolean") {
     return json({ error: "invalid_urgent_option" }, 400);
   }
@@ -286,6 +298,9 @@ async function createPayment(request) {
   if (requestedUrgent && priceResult.rows[0]?.urgent_tariff_available === false) {
     return json({ error: "urgent_tariff_unavailable" }, 409);
   }
+  if (tariffAssessment.length > 0 && requestedTariffCode !== "detailed-review") {
+    return json({ error: "detailed_tariff_required" }, 409);
+  }
   const tariff = resolveTariff(requestedTariffCode, defaultAmountKopecks, requestedUrgent);
   const amountKopecks = tariff.amountKopecks;
 
@@ -294,8 +309,8 @@ async function createPayment(request) {
     await client.query("BEGIN");
     await client.query(
       `INSERT INTO consultations
-        (id, code_hash, browser_token_hash, expires_at, tariff_code, tariff_name, tariff_amount_kopecks, tariff_deadline_minutes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        (id, code_hash, browser_token_hash, expires_at, tariff_code, tariff_name, tariff_amount_kopecks, tariff_deadline_minutes, tariff_assessment, tariff_assessment_confirmed)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, true)`,
       [
         consultationId,
         codeHash(consultationId, code),
@@ -305,6 +320,7 @@ async function createPayment(request) {
         tariff.name,
         tariff.amountKopecks,
         tariff.deadlineMinutes,
+        JSON.stringify(tariffAssessment),
       ],
     );
     await client.query(
@@ -529,6 +545,7 @@ async function consultantList(request) {
   const result = await database.query(
     `SELECT c.id, c.status, c.answer_due_at, c.answer_opened_at, c.created_at, c.archived_at,
             c.tariff_code, c.tariff_name, c.tariff_amount_kopecks, c.tariff_deadline_minutes,
+            c.tariff_assessment, c.tariff_assessment_confirmed,
             visitor.ciphertext, visitor.encryption_iv, visitor.authentication_tag,
             answer.ciphertext AS answer_ciphertext,
             answer.encryption_iv AS answer_encryption_iv,
@@ -594,6 +611,8 @@ async function consultantList(request) {
         amountKopecks: row.tariff_amount_kopecks,
         deadlineMinutes: row.tariff_deadline_minutes,
       } : null,
+      tariffAssessment: Array.isArray(row.tariff_assessment) ? row.tariff_assessment : [],
+      tariffAssessmentConfirmed: row.tariff_assessment_confirmed === true,
       createdAt: row.created_at,
       archivedAt: row.archived_at,
       question: decryptMessage(row.id, "visitor", row),

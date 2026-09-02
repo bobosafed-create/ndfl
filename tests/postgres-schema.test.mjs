@@ -59,6 +59,8 @@ test("each consultation stores an immutable tariff snapshot", () => {
   assert.match(source, /tariff_name varchar\(80\)/);
   assert.match(source, /tariff_amount_kopecks integer/);
   assert.match(source, /tariff_deadline_minutes integer/);
+  assert.match(source, /tariff_assessment jsonb NOT NULL/);
+  assert.match(source, /tariff_assessment_confirmed boolean NOT NULL DEFAULT false/);
 });
 
 test("urgent tariff availability is stored in site settings", () => {

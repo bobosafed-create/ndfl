@@ -77,6 +77,11 @@ test("tariff choice is validated and bound to the server-side payment amount", a
   assert.match(router, /urgent_tariff_unavailable/);
   assert.match(router, /requestedUrgent/);
   assert.match(router, /resolveTariff\(requestedTariffCode, defaultAmountKopecks, requestedUrgent\)/);
+  assert.match(router, /normalizeTariffAssessment\(input\.tariffAssessment\)/);
+  assert.match(router, /tariff_assessment_required/);
+  assert.match(router, /tariffAssessment\.length > 0 && requestedTariffCode !== "detailed-review"/);
+  assert.match(router, /detailed_tariff_required/);
+  assert.match(router, /JSON\.stringify\(tariffAssessment\)/);
 });
 
 test("urgent tariff availability is controlled only from the authenticated cabinet", async () => {
