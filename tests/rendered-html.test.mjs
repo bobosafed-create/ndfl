@@ -185,6 +185,9 @@ test("renders the consultant cabinet", async () => {
   assert.match(page, /Вернуться на сайт/);
   assert.match(page, /Стоимость услуг/);
   assert.match(page, /Подготовить черновик в GigaChat/);
+  assert.match(page, /Подготовить детализированный черновик в GigaChat/);
+  assert.match(page, /createAiDraft\(selected\.id, "brief"\)/);
+  assert.match(page, /createAiDraft\(selected\.id, "detailed"\)/);
   assert.match(page, /Скопировать вопрос/);
   assert.match(page, /\/api\/consultant\/calculations/);
   assert.match(page, /Архив консультаций/);

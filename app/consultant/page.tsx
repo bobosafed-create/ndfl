@@ -17,6 +17,7 @@ type Consultation = {
 };
 
 type CabinetView = "active" | "archive";
+type DraftMode = "brief" | "detailed";
 type IncomingAlert = { id: string; count: number };
 type FeedbackItem = { id: string; category: "review" | "suggestion"; status: "pending" | "published" | "hidden"; content: string; createdAt: string; updatedAt: string };
 type ScheduleDay = { day: string; enabled: boolean; start: string; end: string };
@@ -58,6 +59,7 @@ export default function ConsultantCabinet() {
   const [authenticated, setAuthenticated] = useState(false);
   const [urgentTariffAvailable, setUrgentTariffAvailable] = useState(true);
   const [draftingId, setDraftingId] = useState<string | null>(null);
+  const [draftingMode, setDraftingMode] = useState<DraftMode | null>(null);
   const [alertsEnabled, setAlertsEnabled] = useState(false);
   const [incomingAlert, setIncomingAlert] = useState<IncomingAlert | null>(null);
   const [feedbackItems, setFeedbackItems] = useState<FeedbackItem[]>([]);
@@ -115,11 +117,14 @@ export default function ConsultantCabinet() {
       window.sessionStorage.setItem("ndfl-consultant-key", key);
       const withoutDraft = items.find((item) => item.status === "question_submitted" && !item.aiDraft);
       if (withoutDraft) {
-        setMessage("Новый вопрос получен. GigaChat готовит черновик для проверки консультантом…");
+        const automaticDraftMode: DraftMode = withoutDraft.tariff?.amountKopecks === 99_000 ? "detailed" : "brief";
+        setMessage(automaticDraftMode === "detailed"
+          ? "Новый вопрос по подробному тарифу получен. GigaChat готовит детализированный черновик…"
+          : "Новый вопрос получен. GigaChat готовит краткий черновик для проверки консультантом…");
         const draftResponse = await fetch("/api/consultant/ai-draft", {
           method: "POST",
           headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-          body: JSON.stringify({ consultationId: withoutDraft.id }),
+          body: JSON.stringify({ consultationId: withoutDraft.id, mode: automaticDraftMode }),
         });
         const draftResult = await draftResponse.json();
         if (!draftResponse.ok || typeof draftResult.draft !== "string") throw new Error(draftResult.error || "ai_unavailable");
@@ -366,22 +371,22 @@ export default function ConsultantCabinet() {
     catch { setMessage("Не удалось скопировать вопрос автоматически."); }
   }
 
-  async function createAiDraft(consultationId: string) {
+  async function createAiDraft(consultationId: string, mode: DraftMode) {
     if (draftingId) return;
-    setDraftingId(consultationId); setMessage("");
+    setDraftingId(consultationId); setDraftingMode(mode); setMessage("");
     try {
       const response = await fetch("/api/consultant/ai-draft", {
         method: "POST",
         headers: { authorization: `Bearer ${accessKey}`, "content-type": "application/json" },
-        body: JSON.stringify({ consultationId, regenerate: true }),
+        body: JSON.stringify({ consultationId, mode, regenerate: true }),
       });
       const result = await response.json();
       if (!response.ok || typeof result.draft !== "string") throw new Error(result.error || "ai_unavailable");
       setAnswers((current) => ({ ...current, [consultationId]: result.draft }));
       setConsultations((current) => current.map((item) => item.id === consultationId ? { ...item, aiDraft: result.draft } : item));
-      setMessage("Черновик GigaChat подготовлен. Проверьте нормы, реквизиты источников и факты перед отправкой.");
+      setMessage(`${mode === "detailed" ? "Детализированный" : "Краткий"} черновик GigaChat подготовлен. Проверьте нормы, реквизиты источников и факты перед отправкой.`);
     } catch (error) { setMessage(`Не удалось подготовить черновик. ${aiDraftErrorMessage(error instanceof Error ? error.message : "ai_unavailable")}`); }
-    finally { setDraftingId(null); }
+    finally { setDraftingId(null); setDraftingMode(null); }
   }
 
   function editFeedback(id: string, changes: Partial<FeedbackItem>) {
@@ -482,7 +487,11 @@ export default function ConsultantCabinet() {
               <section className="consultation-document question-document"><h3>Вопрос посетителя</h3><p>{selected.question}</p></section>
               {selected.attachments.length > 0 && <section className="consultation-attachments no-print"><h3>Приложенные документы</h3>{selected.attachments.map((attachment) => <button type="button" key={attachment.id} onClick={() => void downloadAttachment(attachment)}><span>📎 {attachment.name}</span><small>{(attachment.size / 1024).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} КБ · скачать</small></button>)}</section>}
               {selected.status === "archived" ? <section className="consultation-document answer-document"><h3>Ответ консультанта</h3><p>{selected.answer || "Ответ отсутствует."}</p></section> : <>
-                <div className="ai-draft-actions no-print"><button className="ai-draft-button" type="button" disabled={Boolean(draftingId)} onClick={() => void createAiDraft(selected.id)}>{draftingId === selected.id ? "Готовим черновик…" : "Подготовить черновик в GigaChat"}</button><button className="copy-question" type="button" onClick={() => void copyQuestion(selected.question)}>Скопировать вопрос</button></div>
+                <div className="ai-draft-actions no-print">
+                  <button className="ai-draft-button" type="button" disabled={Boolean(draftingId)} onClick={() => void createAiDraft(selected.id, "brief")}>{draftingId === selected.id && draftingMode === "brief" ? "Готовим краткий черновик…" : "Подготовить черновик в GigaChat"}</button>
+                  <button className="ai-draft-button ai-draft-button-detailed" type="button" disabled={Boolean(draftingId)} onClick={() => void createAiDraft(selected.id, "detailed")}>{draftingId === selected.id && draftingMode === "detailed" ? "Готовим детализированный черновик…" : "Подготовить детализированный черновик в GigaChat"}</button>
+                  <button className="copy-question" type="button" onClick={() => void copyQuestion(selected.question)}>Скопировать вопрос</button>
+                </div>
                 <p className="ai-review-note no-print">GigaChat создаёт вспомогательный черновик без гарантированного доступа к актуальным правовым базам. Он не отправляется автоматически: консультант обязан проверить нормы, реквизиты источников, расчёты и факты.</p>
                 <label className="answer-label" htmlFor={`answer-${selected.id}`}>{answerWasSent(selected.status) ? "Редактировать отправленный ответ" : "Ответ консультанта"}</label>
                 <textarea id={`answer-${selected.id}`} maxLength={14000} rows={24} value={selectedAnswer} onChange={(event) => setAnswers((current) => ({ ...current, [selected.id]: event.target.value }))} placeholder="Проверьте вывод, ссылки на официальные источники, расчёты и необходимые действия." />

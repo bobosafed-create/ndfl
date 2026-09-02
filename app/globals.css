@@ -167,6 +167,8 @@ html,body{overflow-x:hidden}
   .consultant-facts div:nth-child(3){grid-column:auto}
 }
 
+.ai-draft-button-detailed{background:#ef6841;color:#fff;box-shadow:0 3px 0 #9b391f}
+
 @media(max-width:700px){
   body{padding-bottom:72px}
   .mobile-question-cta{position:fixed;z-index:80;left:12px;right:12px;bottom:10px;display:flex;align-items:center;justify-content:center;height:56px;border:3px solid var(--navy);border-radius:14px 14px 14px 5px;background:var(--orange);box-shadow:0 6px 0 var(--navy);color:#fff;text-decoration:none;font-weight:900;text-transform:uppercase;letter-spacing:.7px}
