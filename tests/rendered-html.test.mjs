@@ -64,6 +64,19 @@ test("server-renders the consultation landing page", async () => {
   assert.doesNotMatch(html, /codex-preview|Building your site/);
 });
 
+test("provides a distinct free diagnostic for every situation", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /правило 70% кадастровой стоимости/);
+  assert.match(page, /уменьшение суммы продажи на стандартный вычет/);
+  assert.match(page, /распределение вычета в браке/);
+  assert.match(page, /код услуги в справке/);
+  assert.match(page, /упрощённый порядок получения вычета/);
+  assert.match(page, /суммарный доход по всем банкам/);
+  assert.match(page, /статус арендатора как налогового агента/);
+  assert.match(page, /сальдирование убытков/);
+  assert.doesNotMatch(page, /важны даты, суммы, документы и обстоятельства получения дохода или права на вычет/);
+});
+
 test("renders the preliminary apartment-sale tax calculator", async () => {
   const response = await render("/calc");
   assert.equal(response.status, 200);

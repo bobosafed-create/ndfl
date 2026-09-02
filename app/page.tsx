@@ -24,15 +24,15 @@ const fallbackTariffs: Tariff[] = [
 const fallbackUrgentAddon: UrgentAddon = { code: "urgent", name: "Срочно", description: "Письменный результат в течение 2 часов", amountKopecks: 30000, deadlineMinutes: 120, available: true };
 
 const situations = [
-  { slug: "prodazha-kvartiry", title: "Продал квартиру", text: "Срок владения, расходы, вычет и обязанность подать 3-НДФЛ.", path: "/prodazha-kvartiry/", published: false },
-  { slug: "prodazha-avtomobilya", title: "Продал автомобиль", text: "Нужно ли декларировать доход и можно ли учесть стоимость покупки.", path: "/prodazha-avtomobilya/", published: false },
-  { slug: "pokupka-kvartiry", title: "Купил квартиру", text: "Имущественный вычет и возврат НДФЛ, включая ипотечные проценты.", path: "/vychet-pokupka-kvartiry/", published: false },
-  { slug: "lechenie", title: "Оплачивал лечение", text: "Социальный вычет за лечение, лекарства и медицинские услуги.", path: "/vychet-lechenie/", published: false },
-  { slug: "obuchenie", title: "Оплачивал обучение", text: "Возврат НДФЛ за своё обучение или обучение близких.", path: "/vychet-obuchenie/", published: false },
-  { slug: "vklady", title: "Получил проценты по вкладам", text: "Проверка необлагаемой суммы и налога по сведениям банков.", path: "/nalog-vklady/", published: false },
-  { slug: "arenda", title: "Сдавал имущество", text: "НДФЛ с аренды, декларация и подходящий порядок уплаты.", path: "/arenda/", published: false },
-  { slug: "investitsii", title: "Акции, дивиденды, инвестиции", text: "Доходы у брокера, дивиденды, убытки и инвестиционные вычеты.", path: "/investitsii/", published: false },
-  { slug: "drugaya-situatsiya", title: "Другая ситуация", text: "Разберём нестандартный доход, вычет или уведомление налоговой.", path: "/drugaya-situatsiya/", published: false },
+  { slug: "prodazha-kvartiry", title: "Продал квартиру", text: "Срок владения, расходы, вычет и обязанность подать 3-НДФЛ.", diagnostic: "Для ситуации «Продал квартиру» важны: минимальный срок владения, правило 70% кадастровой стоимости, оптимизация налогооблагаемой базы, сроки отчётности и оплаты, сохранность документов и сроки их хранения.", path: "/prodazha-kvartiry/", published: false },
+  { slug: "prodazha-avtomobilya", title: "Продал автомобиль", text: "Нужно ли декларировать доход и можно ли учесть стоимость покупки.", diagnostic: "Для ситуации «Продал автомобиль» важны: срок владения, сумма продажи, расчёт налогооблагаемой базы — уменьшение суммы продажи на стандартный вычет или на сумму документально подтверждённых расходов, сроки отчётности и оплаты.", path: "/prodazha-avtomobilya/", published: false },
+  { slug: "pokupka-kvartiry", title: "Купил квартиру", text: "Имущественный вычет и возврат НДФЛ, включая ипотечные проценты.", diagnostic: "Для ситуации «Купил квартиру» важны: право на имущественный вычет, точка отсчёта для вычета, распределение вычета в браке, срок владения для будущей продажи.", path: "/vychet-pokupka-kvartiry/", published: false },
+  { slug: "lechenie", title: "Оплачивал лечение", text: "Социальный вычет за лечение, лекарства и медицинские услуги.", diagnostic: "Для ситуации «Оплачивал лечение» важны: право на вычет, код услуги в справке, за кого оплачено, срок давности, пакет документов.", path: "/vychet-lechenie/", published: false },
+  { slug: "obuchenie", title: "Оплачивал обучение", text: "Возврат НДФЛ за своё обучение или обучение близких.", diagnostic: "Для ситуации «Оплачивал обучение» важны: право на вычет и лимиты, наличие документов и лицензии, срок давности, упрощённый порядок получения вычета, наличие облагаемого дохода.", path: "/vychet-obuchenie/", published: false },
+  { slug: "vklady", title: "Получил проценты по вкладам", text: "Проверка необлагаемой суммы и налога по сведениям банков.", diagnostic: "Для ситуации «Получил проценты по вкладам» важны: суммарный доход по всем банкам, размер необлагаемого лимита, наличие уведомления в личном кабинете ФНС, сроки и ставка уплаты, корректность данных.", path: "/nalog-vklady/", published: false },
+  { slug: "arenda", title: "Сдавал имущество", text: "НДФЛ с аренды, декларация и подходящий порядок уплаты.", diagnostic: "Для ситуации «Сдавал имущество» важны: статус арендатора как налогового агента, налоговый режим, налоговая база и коммунальные услуги, сроки отчётности и оплаты, регистрация долгосрочных договоров, сохранность документов и сроки их хранения.", path: "/arenda/", published: false },
+  { slug: "investitsii", title: "Акции, дивиденды, инвестиции", text: "Доходы у брокера, дивиденды, убытки и инвестиционные вычеты.", diagnostic: "Для ситуации «Акции, дивиденды, инвестиции» важны: роль брокера как налогового агента, дивиденды и двойное налогообложение, налоговые льготы — льгота долгосрочного владения и ИИС, сальдирование убытков, сверка данных и сроки.", path: "/investitsii/", published: false },
+  { slug: "drugaya-situatsiya", title: "Другая ситуация", text: "Разберём нестандартный доход, вычет или уведомление налоговой.", diagnostic: "Для другой ситуации важны: вид дохода или вычета, даты и суммы, основание получения дохода, подтверждающие документы, сведения налогового агента, сроки отчётности и оплаты.", path: "/drugaya-situatsiya/", published: false },
 ] as const;
 
 function tariffDeadline(minutes: number) {
@@ -488,7 +488,7 @@ export default function Home() {
           <label htmlFor="diagnostic-situation">Что произошло?</label>
           <select id="diagnostic-situation" value={diagnosticSituation} onChange={(event) => { setDiagnosticSituation(event.target.value); setDiagnosticComplete(false); }}><option value="">Выберите ситуацию</option>{situations.map((item) => <option value={item.slug} key={item.slug}>{item.title}</option>)}</select>
           <button className="action-button" type="button" disabled={!diagnosticSituation} onClick={() => setDiagnosticComplete(true)}>Начать бесплатную проверку</button>
-          {diagnosticComplete && <div className="diagnostic-result" role="status"><b>Что стоит проверить</b><p>Для ситуации «{situations.find((item) => item.slug === diagnosticSituation)?.title}» важны даты, суммы, документы и обстоятельства получения дохода или права на вычет. Если вывод влияет на платёж или возврат, выберите персональную проверку ниже.</p><a href="#pricing-heading">Выбрать формат разбора →</a></div>}
+          {diagnosticComplete && <div className="diagnostic-result" role="status"><b>Что стоит проверить</b><p>{situations.find((item) => item.slug === diagnosticSituation)?.diagnostic} Если эти обстоятельства влияют на платёж или возврат, выберите персональную проверку ниже.</p><a href="#pricing-heading">Выбрать формат разбора →</a></div>}
         </div>
       </section>
 
