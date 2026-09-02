@@ -28,10 +28,11 @@ const scheduleDayLabels: Record<string, string> = {
 const defaultServiceSchedule: ScheduleDay[] = Object.keys(scheduleDayLabels).map((day, index) => ({ day, enabled: index < 5, start: "09:00", end: "13:00" }));
 
 function aiDraftErrorMessage(error: unknown) {
-  if (error === "ai_payment_required") return "Timeweb отклонил запрос AI с кодом 402. Проверьте оплату или лимит именно AI-агента, а также соответствие сохранённых ключа и OpenAI URL выбранному агенту.";
-  if (error === "ai_credentials_rejected") return "Timeweb отклонил ключ AI-агента. Сверьте ключ доступа и OpenAI URL в настройках приложения.";
-  if (error === "ai_limit_reached") return "AI-агент достиг установленного лимита запросов или токенов. Проверьте лимит агента в Timeweb и повторите позже.";
-  return "AI-агент временно недоступен. Повторите попытку; если ошибка сохранится, проверьте журнал приложения Timeweb.";
+  if (error === "ai_payment_required") return "GigaChat отклонил запрос из-за тарифа или доступного остатка токенов. Проверьте условия проекта GigaChat API.";
+  if (error === "ai_credentials_rejected") return "GigaChat не принял Authorization Key или выбранный GIGACHAT_SCOPE. Сверьте их с одним и тем же проектом API.";
+  if (error === "ai_model_unavailable") return "Модель GigaChat-2-Max недоступна этому проекту либо запрос не прошёл проверку параметров.";
+  if (error === "ai_limit_reached") return "GigaChat достиг установленной квоты или временного ограничения запросов. Повторите позже и проверьте статистику проекта.";
+  return "GigaChat временно недоступен. Повторите попытку; если ошибка сохранится, проверьте журнал приложения Timeweb.";
 }
 
 function answerWasSent(status: Consultation["status"]) {
@@ -114,7 +115,7 @@ export default function ConsultantCabinet() {
       window.sessionStorage.setItem("ndfl-consultant-key", key);
       const withoutDraft = items.find((item) => item.status === "question_submitted" && !item.aiDraft);
       if (withoutDraft) {
-        setMessage("Новый вопрос получен. AI-агент изучает официальные источники и готовит черновик…");
+        setMessage("Новый вопрос получен. GigaChat готовит черновик для проверки консультантом…");
         const draftResponse = await fetch("/api/consultant/ai-draft", {
           method: "POST",
           headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
@@ -125,7 +126,7 @@ export default function ConsultantCabinet() {
         setAnswers((current) => ({ ...current, [withoutDraft.id]: draftResult.draft }));
         setConsultations((current) => current.map((item) => item.id === withoutDraft.id ? { ...item, aiDraft: draftResult.draft } : item));
         setSelectedId(withoutDraft.id);
-        setMessage("Список обновлён. AI-агент подготовил подробный черновик со ссылками — проверьте его перед отправкой.");
+        setMessage("Список обновлён. GigaChat подготовил черновик — обязательно проверьте нормы, реквизиты источников и факты перед отправкой.");
       } else {
         setMessage(`Данные обновлены в ${new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}. Новых вопросов без черновика нет.`);
       }
@@ -378,7 +379,7 @@ export default function ConsultantCabinet() {
       if (!response.ok || typeof result.draft !== "string") throw new Error(result.error || "ai_unavailable");
       setAnswers((current) => ({ ...current, [consultationId]: result.draft }));
       setConsultations((current) => current.map((item) => item.id === consultationId ? { ...item, aiDraft: result.draft } : item));
-      setMessage("Подробный черновик со ссылками подготовлен. Проверьте источники и факты перед отправкой.");
+      setMessage("Черновик GigaChat подготовлен. Проверьте нормы, реквизиты источников и факты перед отправкой.");
     } catch (error) { setMessage(`Не удалось подготовить черновик. ${aiDraftErrorMessage(error instanceof Error ? error.message : "ai_unavailable")}`); }
     finally { setDraftingId(null); }
   }
@@ -481,8 +482,8 @@ export default function ConsultantCabinet() {
               <section className="consultation-document question-document"><h3>Вопрос посетителя</h3><p>{selected.question}</p></section>
               {selected.attachments.length > 0 && <section className="consultation-attachments no-print"><h3>Приложенные документы</h3>{selected.attachments.map((attachment) => <button type="button" key={attachment.id} onClick={() => void downloadAttachment(attachment)}><span>📎 {attachment.name}</span><small>{(attachment.size / 1024).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} КБ · скачать</small></button>)}</section>}
               {selected.status === "archived" ? <section className="consultation-document answer-document"><h3>Ответ консультанта</h3><p>{selected.answer || "Ответ отсутствует."}</p></section> : <>
-                <div className="ai-draft-actions no-print"><button className="ai-draft-button" type="button" disabled={Boolean(draftingId)} onClick={() => void createAiDraft(selected.id)}>{draftingId === selected.id ? "Готовим черновик…" : "Подготовить черновик с ИИ"}</button><button className="copy-question" type="button" onClick={() => void copyQuestion(selected.question)}>Скопировать вопрос</button></div>
-                <p className="ai-review-note no-print">AI-агент ищет обоснование в официальных источниках и создаёт обычный текст без звёздочек. Черновик не отправляется автоматически: проверьте ссылки, факты и отредактируйте ответ.</p>
+                <div className="ai-draft-actions no-print"><button className="ai-draft-button" type="button" disabled={Boolean(draftingId)} onClick={() => void createAiDraft(selected.id)}>{draftingId === selected.id ? "Готовим черновик…" : "Подготовить черновик в GigaChat"}</button><button className="copy-question" type="button" onClick={() => void copyQuestion(selected.question)}>Скопировать вопрос</button></div>
+                <p className="ai-review-note no-print">GigaChat создаёт вспомогательный черновик без гарантированного доступа к актуальным правовым базам. Он не отправляется автоматически: консультант обязан проверить нормы, реквизиты источников, расчёты и факты.</p>
                 <label className="answer-label" htmlFor={`answer-${selected.id}`}>{answerWasSent(selected.status) ? "Редактировать отправленный ответ" : "Ответ консультанта"}</label>
                 <textarea id={`answer-${selected.id}`} maxLength={14000} rows={24} value={selectedAnswer} onChange={(event) => setAnswers((current) => ({ ...current, [selected.id]: event.target.value }))} placeholder="Проверьте вывод, ссылки на официальные источники, расчёты и необходимые действия." />
                 <p className="answer-auto-note no-print">При отправке в конец ответа автоматически добавляется пометка о том, что вывод основан на предоставленных данных, а дополнительные сведения оформляются новым вопросом.</p>

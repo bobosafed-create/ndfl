@@ -809,9 +809,13 @@ async function consultantAiDraft(request) {
     );
     return json({ draft, cached: false });
   } catch (error) {
-    console.error(`AI draft request failed: ${error?.code ?? "unknown_error"}; status=${error?.status ?? "none"}`);
+    console.error(`GigaChat draft request failed: ${error?.code ?? "unknown_error"}; stage=${error?.stage ?? "unknown"}; status=${error?.status ?? "none"}`);
+    if (error?.code === "gigachat_auth_failed" || error?.code === "gigachat_auth_empty") {
+      return json({ error: "ai_credentials_rejected" }, 502);
+    }
     if (error?.status === 402) return json({ error: "ai_payment_required" }, 502);
     if (error?.status === 401 || error?.status === 403) return json({ error: "ai_credentials_rejected" }, 502);
+    if (error?.status === 404 || error?.status === 422) return json({ error: "ai_model_unavailable" }, 502);
     if (error?.status === 429) return json({ error: "ai_limit_reached" }, 502);
     return json({ error: "ai_unavailable" }, 502);
   }
