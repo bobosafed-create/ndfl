@@ -152,26 +152,33 @@ test("visitor attachment uploads are disabled while prior files remain consultan
   assert.match(router, /consultantAuthorized\(request\)/);
 });
 
-test("AI drafts are server-side, authenticated and never sent directly to the visitor", async () => {
+test("GigaChat drafts are server-side, authenticated and never sent directly to the visitor", async () => {
   const router = await readFile(new URL("../api/router.mjs", import.meta.url), "utf8");
   const ai = await readFile(new URL("../lib/ai.mjs", import.meta.url), "utf8");
   const cabinet = await readFile(new URL("../app/consultant/page.tsx", import.meta.url), "utf8");
+  const dockerfile = await readFile(new URL("../Dockerfile", import.meta.url), "utf8");
   assert.match(router, /consultantAiDraft/);
   assert.match(router, /author = 'ai_draft'/);
   assert.match(router, /cached: true/);
   assert.match(router, /consultantAuthorized\(request\)/);
-  assert.match(ai, /process\.env\.TIMEWEB_AI_AGENT_API_KEY/);
-  assert.match(ai, /process\.env\.TIMEWEB_AI_AGENT_BASE_URL/);
-  assert.match(ai, /api\.timeweb\.ai\/v1/);
+  assert.match(ai, /process\.env\.GIGACHAT_AUTHORIZATION_KEY/);
+  assert.match(ai, /process\.env\.GIGACHAT_SCOPE/);
+  assert.match(ai, /ngw\.devices\.sberbank\.ru:9443\/api\/v2\/oauth/);
+  assert.match(ai, /api\.giga\.chat\/v1/);
   assert.match(ai, /chat\/completions/);
-  assert.match(ai, /dashscope\/qwen3\.5-plus/);
-  assert.doesNotMatch(cabinet, /TIMEWEB_AI_API_KEY/);
-  assert.match(cabinet, /Подготовить черновик с ИИ/);
-  assert.match(cabinet, /AI-агент изучает официальные источники/);
+  assert.match(ai, /GigaChat-2-Max/);
+  assert.match(ai, /rquid: randomUUID\(\)/);
+  assert.match(ai, /cachedAccessTokenExpiresAt/);
+  assert.doesNotMatch(ai, /TIMEWEB_AI/);
+  assert.doesNotMatch(ai, /qwen/i);
+  assert.doesNotMatch(cabinet, /GIGACHAT_AUTHORIZATION_KEY/);
+  assert.match(cabinet, /Подготовить черновик в GigaChat/);
+  assert.match(cabinet, /GigaChat готовит черновик/);
   assert.match(cabinet, /Отправить в сейф/);
   assert.match(router, /ai_payment_required/);
   assert.match(router, /error\?\.status === 402/);
-  assert.match(cabinet, /Timeweb отклонил запрос AI с кодом 402/);
+  assert.match(cabinet, /GigaChat отклонил запрос/);
+  assert.match(dockerfile, /NODE_EXTRA_CA_CERTS=\/app\/certs\/russian-trusted-root-ca\.crt/);
 });
 
 test("AI draft formatting removes Markdown stars before editing", async () => {
@@ -180,6 +187,44 @@ test("AI draft formatting removes Markdown stars before editing", async () => {
     cleanDraftFormatting("**Краткий вывод**\n* Первый шаг\n*важно*"),
     "Краткий вывод\n• Первый шаг\nважно",
   );
+});
+
+test("GigaChat exchanges the authorization key for a cached OAuth token", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalKey = process.env.GIGACHAT_AUTHORIZATION_KEY;
+  const originalScope = process.env.GIGACHAT_SCOPE;
+  const calls = [];
+  process.env.GIGACHAT_AUTHORIZATION_KEY = "test-authorization-key";
+  process.env.GIGACHAT_SCOPE = "GIGACHAT_API_PERS";
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url: String(url), options });
+    if (String(url).includes("/api/v2/oauth")) {
+      return new Response(JSON.stringify({ access_token: "temporary-access-token", expires_at: Date.now() + 30 * 60_000 }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify({ choices: [{ message: { content: "Проверяемый черновик ответа консультанта" } }] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  try {
+    const { createConsultationDraft } = await import(`../lib/ai.mjs?oauth-test=${Date.now()}`);
+    await createConsultationDraft("Первый обезличенный вопрос");
+    await createConsultationDraft("Второй обезличенный вопрос");
+    assert.equal(calls.filter((call) => call.url.includes("/api/v2/oauth")).length, 1);
+    assert.equal(calls.filter((call) => call.url.includes("/chat/completions")).length, 2);
+    assert.equal(calls[0].options.headers.authorization, "Basic test-authorization-key");
+    assert.match(String(calls[0].options.body), /scope=GIGACHAT_API_PERS/);
+    assert.equal(calls[1].options.headers.authorization, "Bearer temporary-access-token");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.GIGACHAT_AUTHORIZATION_KEY;
+    else process.env.GIGACHAT_AUTHORIZATION_KEY = originalKey;
+    if (originalScope === undefined) delete process.env.GIGACHAT_SCOPE;
+    else process.env.GIGACHAT_SCOPE = originalScope;
+  }
 });
 
 test("the research agent receives enough time and space for a detailed tax draft", async () => {
