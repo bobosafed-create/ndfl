@@ -30,6 +30,7 @@ test("server-renders the consultation landing page", async () => {
 
   const html = await response.text();
   assert.match(html, /<title>Проверьте свой НДФЛ/i);
+  assert.match(html, /<meta name="yandex-verification" content="f621b7b1fac1315f"/i);
   assert.match(html, /Проверьте свой/);
   assert.match(html, /Выберите свою ситуацию/);
   assert.match(html, /Не уверены, что вам вообще нужна консультация/);
