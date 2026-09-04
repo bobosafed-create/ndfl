@@ -284,6 +284,7 @@ async function createPayment(request) {
   const idempotencyKey = randomUUID();
   const browserToken = randomToken();
   const code = String(randomInt(1000, 10000));
+  const recoveryCode = encryptMessage(consultationId, "recovery_code", code);
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   const defaultAmountKopecks = priceResult.rows[0]?.consultation_price_kopecks ?? 10000;
   const requestedTariffCode = typeof input.tariffCode === "string" ? input.tariffCode.trim() : "";
@@ -310,8 +311,8 @@ async function createPayment(request) {
     await client.query("BEGIN");
     await client.query(
       `INSERT INTO consultations
-        (id, code_hash, browser_token_hash, expires_at, tariff_code, tariff_name, tariff_amount_kopecks, tariff_deadline_minutes, tariff_assessment, tariff_assessment_confirmed)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, true)`,
+        (id, code_hash, browser_token_hash, expires_at, tariff_code, tariff_name, tariff_amount_kopecks, tariff_deadline_minutes, tariff_assessment, tariff_assessment_confirmed, recovery_code_ciphertext, recovery_code_iv, recovery_code_tag)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, true, $10, $11, $12)`,
       [
         consultationId,
         codeHash(consultationId, code),
@@ -322,6 +323,9 @@ async function createPayment(request) {
         tariff.amountKopecks,
         tariff.deadlineMinutes,
         JSON.stringify(tariffAssessment),
+        recoveryCode.ciphertext,
+        recoveryCode.iv,
+        recoveryCode.authenticationTag,
       ],
     );
     await client.query(
@@ -554,9 +558,9 @@ async function consultationStatus(request) {
   }
   const fresh = await authenticateConsultation(database, input.consultationId, input.browserToken);
   return json({
-    status: fresh.status,
+    status: fresh.status === "archived" ? "answered" : fresh.status,
     answerDueAt: fresh.answer_due_at,
-    answerReady: fresh.status === "answered",
+    answerReady: ["answered", "archived"].includes(fresh.status),
     upgradeStatus: fresh.upgrade_status,
     upgradeAmountKopecks: UPGRADE_AMOUNT_KOPECKS,
     tariff: fresh.tariff_code ? {
@@ -636,7 +640,7 @@ async function openAnswer(request) {
     );
     return json({ error: "invalid_code" }, 403);
   }
-  if (consultation.status !== "answered") return json({ error: "answer_not_ready" }, 409);
+  if (!["answered", "archived"].includes(consultation.status)) return json({ error: "answer_not_ready" }, 409);
   const result = await database.query(
     `SELECT ciphertext, encryption_iv, authentication_tag
      FROM consultation_messages
@@ -688,6 +692,7 @@ async function consultantList(request) {
   const database = getDatabasePool();
   const result = await database.query(
     `SELECT c.id, c.status, c.answer_due_at, c.answer_opened_at, c.created_at, c.archived_at,
+            c.recovery_code_ciphertext, c.recovery_code_iv, c.recovery_code_tag,
             c.tariff_code, c.tariff_name, c.tariff_amount_kopecks, c.tariff_deadline_minutes,
             c.tariff_assessment, c.tariff_assessment_confirmed, c.upgrade_status,
             c.upgrade_requested_at, c.upgrade_completed_at,
@@ -763,6 +768,12 @@ async function consultantList(request) {
       upgradeCompletedAt: row.upgrade_completed_at,
       createdAt: row.created_at,
       archivedAt: row.archived_at,
+      answerOpenedAt: row.answer_opened_at,
+      recoveryCode: row.recovery_code_ciphertext ? decryptMessage(row.id, "recovery_code", {
+        ciphertext: row.recovery_code_ciphertext,
+        encryption_iv: row.recovery_code_iv,
+        authentication_tag: row.recovery_code_tag,
+      }) : null,
       question: decryptMessage(row.id, "visitor", row),
       answer: row.answer_ciphertext ? decryptMessage(row.id, "consultant", {
         ciphertext: row.answer_ciphertext,
@@ -787,7 +798,7 @@ async function consultantPendingSummary(request) {
   const result = await database.query(
     `SELECT id, status, answer_opened_at, upgrade_status, created_at
      FROM consultations
-     WHERE status IN ('question_submitted', 'answered')
+     WHERE status IN ('question_submitted', 'answered', 'archived')
      ORDER BY created_at DESC
      LIMIT 100`,
   );
@@ -799,6 +810,7 @@ async function consultantPendingSummary(request) {
       id: row.id,
       status: row.status === "answered" && row.answer_opened_at ? "received" : row.status,
       upgradeStatus: row.upgrade_status,
+      answerOpenedAt: row.answer_opened_at,
     })),
   });
 }
@@ -916,12 +928,12 @@ async function consultantAnswer(request) {
     );
     await client.query(
       `UPDATE consultations
-       SET status = 'answered', answer_opened_at = NULL, updated_at = now()
+       SET status = 'archived', archived_at = now(), answer_opened_at = NULL, updated_at = now()
        WHERE id = $1`,
       [input.consultationId],
     );
     await client.query("COMMIT");
-    return json({ saved: true, answer: answerWithNotice });
+    return json({ saved: true, status: "archived", answer: answerWithNotice });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     throw error;

@@ -147,7 +147,7 @@ export default function Home() {
   const [safeMessage, setSafeMessage] = useState("");
   const [answerReady, setAnswerReady] = useState(false);
   const [codeNoticeVisible, setCodeNoticeVisible] = useState(false);
-  const [codeNoticeSeconds, setCodeNoticeSeconds] = useState(10);
+  const [codeNoticeSeconds, setCodeNoticeSeconds] = useState(60);
   const [consultationId, setConsultationId] = useState("");
   const [browserToken, setBrowserToken] = useState("");
   const [answerDueAt, setAnswerDueAt] = useState<string | null>(null);
@@ -220,7 +220,7 @@ export default function Home() {
       if (window.location.hash === "#consultation-room") focusConsultationRoom();
     } else if (result.status === "question_submitted" || result.status === "answered") {
       setAnswerReady(result.status === "answered");
-      setCodeNoticeVisible(false);
+      if (result.status === "answered") setCodeNoticeVisible(false);
       setStage("waiting");
     } else if (result.status === "cancelled") {
       window.localStorage.removeItem("ndfl-active-consultation");
@@ -494,7 +494,7 @@ export default function Home() {
       if (!response.ok) throw new Error("save_failed");
       const result = await response.json();
       setAnswerDueAt(result.answerDueAt ?? null);
-      setCodeNoticeSeconds(10);
+      setCodeNoticeSeconds(60);
       setCodeNoticeVisible(true);
       setAnswerReady(false);
       setStage("waiting");
@@ -571,7 +571,7 @@ export default function Home() {
     setSafeCode("");
     setAnswerReady(false);
     setCodeNoticeVisible(false);
-    setCodeNoticeSeconds(10);
+    setCodeNoticeSeconds(60);
     setSafeMessage("");
     setTariffAssessmentFlags([]);
     setSimpleAssessmentConfirmed(false);
@@ -745,7 +745,7 @@ export default function Home() {
           <div className="window"><span/><span/><span/><span/></div><div className="plant"><i/><b>✦</b></div>
           <div className={`safe ${answerReady ? "safe-ready" : ""}`} aria-label="Защищённый сейф с ответом"><span className="safe-label">{answerReady ? "ОТВЕТ ПОЛУЧЕН" : "Проверенный налоговым специалистом письменный ответ в срок выбранного тарифа"}</span><div className={`safe-door ${stage === "answer" ? "safe-open" : ""}`}><i className="safe-wheel" aria-hidden="true"><span /></i><b>ПЕРСОНАЛЬНЫЙ КОД</b></div><div className="safe-legs"><i/><i/></div></div><div className="rug" />
 
-          {stage === "waiting" && codeNoticeVisible && <div className="waiting-panel code-notice-panel"><span className="seal">✓</span><h3>Вопрос сохранён</h3><p>Ответ будет подготовлен не позднее <strong>{deadline}</strong>.</p><div className="code-reminder"><span>Ваш персональный код</span><strong>{displayCode(consultationCode)}</strong></div><div className="privacy-countdown"><b>Запомните код!</b><span>Для конфиденциальности окошко закроется через <strong>{codeNoticeSeconds}</strong> сек.</span></div></div>}
+          {stage === "waiting" && codeNoticeVisible && <div className="waiting-panel code-notice-panel"><span className="seal">✓</span><h3>Вопрос сохранён</h3><p>Ответ будет подготовлен не позднее <strong>{deadline}</strong>.</p><div className="code-reminder"><span>Ваш персональный код</span><strong>{displayCode(consultationCode)}</strong></div><div className="privacy-countdown"><b>Запишите код или сделайте снимок экрана</b><span>Для конфиденциальности окошко закроется через <strong>{codeNoticeSeconds}</strong> сек.</span></div><button type="button" className="code-notice-dismiss" onClick={() => setCodeNoticeVisible(false)}>Код записан — закрыть</button></div>}
           {stage === "waiting" && !codeNoticeVisible && upgradeStatus === "requested" && <section className="upgrade-panel" role="dialog" aria-labelledby="upgrade-title"><span className="upgrade-kicker">Уточнение объёма работы</span><h3 id="upgrade-title">Для вопроса нужен подробный разбор</h3><p>Консультант увидел признаки тарифа 990 ₽. Выберите один из двух вариантов:</p><div className="upgrade-options"><button type="button" disabled={upgradeBusy} onClick={() => void decideUpgrade("decline")}><b>Оставить тариф 390 ₽</b><span>Получить краткий вывод и общий порядок действий без сложного расчёта.</span></button><button className="upgrade-pay" type="button" disabled={upgradeBusy} onClick={() => void decideUpgrade("pay")}><b>Доплатить 600 ₽</b><span>Перейти к точному расчёту и подробному разбору. Новый срок начнётся после доплаты.</span></button></div>{upgradeMessage && <p className="upgrade-message" role="status">{upgradeMessage}</p>}</section>}
           {stage === "waiting" && !codeNoticeVisible && upgradeStatus === "awaiting_payment" && !answerReady && <div className="pending-toast upgrade-pending" role="status"><i />Проверяем доплату 600 ₽. После подтверждения начнётся новый срок подробного разбора.</div>}
           {stage === "waiting" && !codeNoticeVisible && upgradeStatus === "completed" && !answerReady && <div className="pending-toast upgrade-complete" role="status"><i />Доплата получена. Консультант готовит подробный разбор.</div>}

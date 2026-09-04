@@ -141,6 +141,8 @@ test("keeps consultation codes four digits and uses the protected payment flow",
   assert.match(page, /getElementById\("consultation-room"\)\?\.scrollIntoView/);
   assert.doesNotMatch(page, /Демонстрационный платёж/);
   assert.match(page, /окошко закроется через/);
+  assert.match(page, /setCodeNoticeSeconds\(60\)/);
+  assert.match(page, /Код записан — закрыть/);
   assert.match(page, /paginateAnswer/);
   assert.match(page, /answer-carousel/);
   assert.match(page, /Страница <b>/);
@@ -229,6 +231,8 @@ test("renders the consultant cabinet", async () => {
   assert.match(page, /Тарифы фиксированы в коде сайта/);
   assert.match(page, /Тариф:/);
   assert.match(page, /Основание выбора тарифа/);
+  assert.match(page, /selected.recoveryCode/);
+  assert.match(page, /Вопрос и ответ автоматически перенесены в архив/);
   assert.match(page, /tariffAssessmentConfirmed/);
   assert.match(page, /Допопция «Срочно»/);
   assert.match(page, /\/api\/consultant\/settings/);
@@ -248,7 +252,7 @@ test("renders the consultant cabinet", async () => {
   assert.match(page, /Выберите консультацию в перечне выше/);
   assert.match(page, /ОТВЕТ ОТПРАВЛЕН В СЕЙФ/);
   assert.match(page, /ОТВЕТ ПОЛУЧЕН, КОНСУЛЬТАЦИЯ ЗАВЕРШЕНА/);
-  assert.match(page, /status: "answered"/);
+  assert.match(page, /status: "archived"/);
   assert.match(page, /"answered" \| "received"/);
   assert.match(page, /Обновить ответ в сейфе/);
   assert.match(page, /Требуется подробный разбор/);

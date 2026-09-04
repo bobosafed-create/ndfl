@@ -11,10 +11,13 @@ test("database schema stores consultation text only as authenticated ciphertext"
   assert.doesNotMatch(source, /question_text|answer_text|question varchar|answer varchar/i);
 });
 
-test("database schema never stores the four-digit code itself", () => {
+test("database schema stores a code hash and optional encrypted recovery copy, never plaintext", () => {
   assert.match(source, /code_hash char\(64\) NOT NULL/);
   assert.doesNotMatch(source, /access_code\s+(?:char|varchar|text|integer)/i);
   assert.match(source, /browser_token_hash char\(64\) NOT NULL/);
+  assert.match(source, /recovery_code_ciphertext bytea/);
+  assert.match(source, /recovery_code_iv bytea/);
+  assert.match(source, /recovery_code_tag bytea/);
 });
 
 test("configuration diagnostics can reveal variable names but never values", () => {

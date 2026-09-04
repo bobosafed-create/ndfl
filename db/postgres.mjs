@@ -231,6 +231,16 @@ const migrations = [
   },
 ];
 
+// Encrypted recovery codes are optional for consultations created before this migration.
+migrations.push({
+  version: 13,
+  statements: [
+    `ALTER TABLE consultations ADD COLUMN IF NOT EXISTS recovery_code_ciphertext bytea`,
+    `ALTER TABLE consultations ADD COLUMN IF NOT EXISTS recovery_code_iv bytea`,
+    `ALTER TABLE consultations ADD COLUMN IF NOT EXISTS recovery_code_tag bytea`,
+  ],
+});
+
 function missingDatabaseVariables() {
   return requiredVariables.filter((name) => !process.env[name]);
 }

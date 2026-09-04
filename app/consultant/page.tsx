@@ -9,6 +9,8 @@ type Consultation = {
   answerDueAt: string | null;
   createdAt: string;
   archivedAt: string | null;
+  recoveryCode: string | null;
+  answerOpenedAt: string | null;
   question: string;
   answer: string | null;
   aiDraft: string | null;
@@ -186,13 +188,13 @@ export default function ConsultantCabinet() {
         if (!response.ok || cancelled) return;
         const result = await response.json();
         const pending: { id: string; createdAt: string }[] = Array.isArray(result.pending) ? result.pending : [];
-        const active: { id: string; status: Consultation["status"]; upgradeStatus?: Consultation["upgradeStatus"] }[] = Array.isArray(result.active) ? result.active : [];
+        const active: { id: string; status: Consultation["status"]; upgradeStatus?: Consultation["upgradeStatus"]; answerOpenedAt?: string | null }[] = Array.isArray(result.active) ? result.active : [];
         if (active.length > 0) {
           const statusById = new Map(active.map((item) => [item.id, item.status]));
           setConsultations((current) => current.map((item) => {
             const status = statusById.get(item.id);
             const remote = active.find((entry) => entry.id === item.id);
-            return status && item.status !== "archived" ? { ...item, status, upgradeStatus: remote?.upgradeStatus ?? item.upgradeStatus } : item;
+            return status ? { ...item, status, upgradeStatus: remote?.upgradeStatus ?? item.upgradeStatus, answerOpenedAt: remote?.answerOpenedAt ?? item.answerOpenedAt } : item;
           }));
         }
         const fresh = pending.filter((item) => !knownConsultationIds.current.has(item.id));
@@ -273,10 +275,11 @@ export default function ConsultantCabinet() {
       if (!response.ok) throw new Error("save_failed");
       const result = await response.json();
       setAnswers((current) => ({ ...current, [consultationId]: result.answer || answer }));
-      setConsultations((current) => current.map((item) => item.id === consultationId ? { ...item, status: "answered", answer: result.answer || answer } : item));
-      await load(accessKey, view);
+      setConsultations((current) => current.map((item) => item.id === consultationId ? { ...item, status: "archived", answer: result.answer || answer } : item));
+      setView("archive");
+      await load(accessKey, "archive");
       setSelectedId(consultationId);
-      setMessage("ОТВЕТ ОТПРАВЛЕН В СЕЙФ. Он уже доступен посетителю по персональному коду.");
+      setMessage("ОТВЕТ ОТПРАВЛЕН В СЕЙФ. Вопрос и ответ автоматически перенесены в архив. Ответ доступен посетителю по персональному коду.");
     } catch {
       setMessage("Не удалось сохранить ответ. Повторите попытку.");
     } finally {
@@ -522,7 +525,8 @@ export default function ConsultantCabinet() {
           {!selected ? <div className="cabinet-empty">Выберите консультацию в перечне выше.</div> : (
             <article className={`consultation-editor ${selected.status}`} key={selected.id}>
               <header><div><span className="mini-label">Консультация</span><h2>{selected.status === "archived" ? "Архивная запись" : answerWasSent(selected.status) ? "Выполненная консультация" : "Новый вопрос"}</h2>{selected.tariff && <p className="consultation-tariff">Тариф: <b>{selected.tariff.name}</b> · {(selected.tariff.amountKopecks / 100).toLocaleString("ru-RU")} ₽ · {selected.tariff.deadlineMinutes === 60 ? "1 час" : `${selected.tariff.deadlineMinutes / 60} ч`}</p>}</div><div className={`consultation-status ${answerWasSent(selected.status) ? "answered" : ""} ${selected.status === "received" ? "received" : ""}`}><b>{selected.status === "archived" ? "АРХИВ" : consultationStatusLabel(selected.status)}</b><time>{selected.status === "received" ? "посетитель успешно открыл сейф" : selected.answerDueAt ? `срок до ${new Date(selected.answerDueAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}` : "без срока"}</time></div></header>
-              <section className="consultation-document question-document"><h3>Вопрос посетителя</h3><p>{selected.question}</p></section>
+              <section className="consultation-document question-document"><div className="question-document-heading"><h3>Вопрос посетителя</h3><aside className="consultant-recovery-code no-print"><small>Код от сейфа</small><strong>{selected.recoveryCode ?? "Не сохранён"}</strong></aside></div><p>{selected.question}</p><small className="recovery-code-warning no-print">Сообщайте код только после проверки принадлежности обращения, например по идентификатору платежа. Для открытия ответа нужен исходный браузер. Для старых записей зашифрованная копия кода может отсутствовать.</small></section>
+              {selected.status === "archived" && <p className="archive-delivery-status" role="status">{selected.answerOpenedAt ? "ОТВЕТ ПОЛУЧЕН, КОНСУЛЬТАЦИЯ ЗАВЕРШЕНА" : "ОТВЕТ ОТПРАВЛЕН В СЕЙФ — ожидает открытия посетителем"}</p>}
               {selected.tariffAssessmentConfirmed && <section className="consultation-tariff-assessment no-print"><h3>Основание выбора тарифа</h3>{selected.tariffAssessment.length > 0 ? <ul>{selected.tariffAssessment.map((item) => <li key={item}>{tariffAssessmentLabels[item] ?? item}</li>)}</ul> : <p>Посетитель подтвердил: один объект или одна операция, без сложного расчёта и сравнения вариантов.</p>}</section>}
               {selected.status === "question_submitted" && (selected.tariff?.code.startsWith("situation-check") || selected.upgradeStatus !== null) && <section className={`consultation-upgrade-status ${selected.upgradeStatus ?? "available"} no-print`}><h3>Соответствие тарифа вопросу</h3>{selected.upgradeStatus === null && <><p>Если вопрос выходит за рамки краткой проверки, предложите посетителю выбор: оставить исходный объём либо доплатить 600 ₽.</p><button type="button" disabled={loading} onClick={() => void requestTariffUpgrade(selected.id)}>Требуется подробный разбор</button></>}{selected.upgradeStatus === "requested" && <p><b>Ожидается выбор посетителя.</b> Ответ пока не отправляйте.</p>}{selected.upgradeStatus === "awaiting_payment" && <p><b>Посетитель выбрал доплату 600 ₽.</b> Ожидается подтверждение платежа.</p>}{selected.upgradeStatus === "declined" && <p><b>Посетитель оставил тариф 390 ₽.</b> Подготовьте краткий ответ в первоначальном объёме.</p>}{selected.upgradeStatus === "completed" && <p><b>Доплата получена.</b> Подготовьте подробный разбор; срок рассчитан заново от момента оплаты.</p>}</section>}
               {selected.attachments.length > 0 && <section className="consultation-attachments no-print"><h3>Приложенные документы</h3>{selected.attachments.map((attachment) => <button type="button" key={attachment.id} onClick={() => void downloadAttachment(attachment)}><span>📎 {attachment.name}</span><small>{(attachment.size / 1024).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} КБ · скачать</small></button>)}</section>}

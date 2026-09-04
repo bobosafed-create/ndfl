@@ -8,6 +8,26 @@ process.env.CONSULTANT_ACCESS_KEY = "a-long-test-only-consultant-key";
 
 const security = await import("../lib/security.mjs");
 
+test("recovery code uses authenticated encryption and is exposed only in consultant list", async () => {
+  const encrypted = security.encryptMessage("test-consultation", "recovery_code", "1234");
+  const stored = { ciphertext: encrypted.ciphertext, encryption_iv: encrypted.iv, authentication_tag: encrypted.authenticationTag };
+  assert.equal(security.decryptMessage("test-consultation", "recovery_code", stored), "1234");
+  assert.throws(() => security.decryptMessage("other-consultation", "recovery_code", stored));
+  const router = await readFile(new URL("../api/router.mjs", import.meta.url), "utf8");
+  const publicStatus = router.split("async function consultationStatus(request)")[1].split("async function saveQuestion")[0];
+  assert.doesNotMatch(publicStatus, /recoveryCode|recovery_code/);
+  const list = router.split("async function consultantList(request)")[1].split("async function consultantPendingSummary")[0];
+  assert.match(list, /consultantAuthorized\(request\)/);
+  assert.match(list, /decryptMessage\(row.id, "recovery_code"/);
+});
+
+test("archived answers remain accessible through browser authentication and the code", async () => {
+  const router = await readFile(new URL("../api/router.mjs", import.meta.url), "utf8");
+  assert.match(router, /status: fresh.status === "archived" \? "answered" : fresh.status/);
+  assert.match(router, /\["answered", "archived"\].includes\(consultation.status\)/);
+  assert.match(router, /consultation.code_hash !== codeHash\(consultation.id, code\)/);
+});
+
 test("encrypts and authenticates consultation messages", () => {
   const encrypted = security.encryptMessage("4b593eac-8d19-4a28-9c44-8c58d151592c", "visitor", "Секретный налоговый вопрос");
   assert.notEqual(encrypted.ciphertext.toString("utf8"), "Секретный налоговый вопрос");
@@ -122,7 +142,7 @@ test("new-question polling is authenticated and does not return question text", 
   assert.match(router, /consultantPendingSummary/);
   assert.match(router, /GET \/api\/consultant\/pending-summary/);
   assert.match(router, /allowRequest\("consultant-alerts"/);
-  assert.match(router, /SELECT id, status, answer_opened_at, upgrade_status, created_at\s+FROM consultations\s+WHERE status IN \('question_submitted', 'answered'\)/);
+  assert.match(router, /SELECT id, status, answer_opened_at, upgrade_status, created_at\s+FROM consultations\s+WHERE status IN \('question_submitted', 'answered', 'archived'\)/);
   assert.doesNotMatch(router, /pending: result\.rows\.map\(\(row\) => \(\{[\s\S]*question:/);
   assert.match(router, /consultantAuthorized\(request\)/);
 });
@@ -291,7 +311,7 @@ test("opening the safe records visitor receipt without losing the answer lifecyc
   assert.match(postgres, /version: 10[\s\S]+answer_opened_at timestamptz/);
   assert.match(router, /answer_opened_at = COALESCE\(answer_opened_at, now\(\)\)/);
   assert.match(router, /row\.status === "answered" && row\.answer_opened_at \? "received"/);
-  assert.match(router, /SET status = 'answered', answer_opened_at = NULL/);
+  assert.match(router, /SET status = 'archived', archived_at = now\(\), answer_opened_at = NULL/);
   assert.match(cabinet, /ОТВЕТ ПОЛУЧЕН, КОНСУЛЬТАЦИЯ ЗАВЕРШЕНА/);
   assert.match(cabinet, /посетитель успешно открыл сейф/);
   assert.match(cabinet, /status === "received"/);
