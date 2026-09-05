@@ -346,3 +346,19 @@ test("only an authenticated consultant can request an upgrade", async () => {
   assert.match(router, /consultantAuthorized\(request\)/);
   assert.match(router, /POST \/api\/consultant\/request-upgrade/);
 });
+
+test("site documents use versioned database storage and authenticated administration", async () => {
+  const postgres = await readFile(new URL("../db/postgres.mjs", import.meta.url), "utf8");
+  const api = await readFile(new URL("../api/legal-documents.mjs", import.meta.url), "utf8");
+  const editor = await readFile(new URL("../components/LegalDocumentsAdmin.tsx", import.meta.url), "utf8");
+  assert.match(postgres, /version: 14[\s\S]+CREATE TABLE IF NOT EXISTS legal_documents/);
+  assert.match(postgres, /CREATE TABLE IF NOT EXISTS legal_document_versions/);
+  assert.match(api, /consultantKeyMatches/);
+  assert.match(api, /published_revision/);
+  assert.match(api, /DELETE FROM legal_documents WHERE id = \$1 AND is_system = false/);
+  assert.match(api, /status = 'draft'/);
+  assert.doesNotMatch(editor, /dangerouslySetInnerHTML/);
+  assert.match(editor, /Сохранить черновик/);
+  assert.match(editor, /Опубликовать/);
+  assert.match(editor, /История редакций/);
+});

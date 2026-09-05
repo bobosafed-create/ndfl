@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import LegalFooterLinks from "../../components/LegalFooterLinks";
 
 const RUB = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });
 const CONSULTATION_PRICE = 990;
@@ -109,7 +110,7 @@ export default function CalculatorPage() {
         <aside><strong>990 ₽</strong><b>Расчёт и подробный разбор — до 8 часов</b><small>Допопцию «Срочно» до 2 часов можно выбрать на главной странице за 300 ₽</small><button type="button" onClick={goToConsultation}>Перейти к персональному разбору →</button><em>Без регистрации</em></aside>
       </section>
 
-      <footer className="calc-footer"><p>Предварительный пример не заменяет проверку договора, расходов и подтверждающих документов.</p><nav><a href="/legal#offer">Оферта</a><a href="/legal#privacy">Конфиденциальность</a><a href="/legal#contacts">Контакты</a></nav></footer>
+      <footer className="calc-footer"><p>Предварительный пример не заменяет проверку договора, расходов и подтверждающих документов.</p><LegalFooterLinks /></footer>
     </main>
   );
 }

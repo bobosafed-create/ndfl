@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import LegalDocumentsAdmin from "../../components/LegalDocumentsAdmin";
 
 type Consultation = {
   id: string;
@@ -521,6 +522,8 @@ export default function ConsultantCabinet() {
           </section>
 
           <section className="feedback-admin" aria-labelledby="feedback-admin-title"><div className="feedback-admin-heading"><div><span className="mini-label">Модерация</span><h2 id="feedback-admin-title">Отзывы и предложения</h2></div><b>{feedbackItems.filter((item) => item.status === "pending").length} ожидают проверки</b></div>{feedbackItems.length === 0 ? <p className="feedback-admin-empty">Новых сообщений посетителей пока нет.</p> : <div className="feedback-admin-list">{feedbackItems.map((item) => <article key={item.id} className={item.status}><header><select aria-label="Тип сообщения" value={item.category} onChange={(event) => editFeedback(item.id, { category: event.target.value as FeedbackItem["category"] })}><option value="review">Отзыв</option><option value="suggestion">Предложение</option></select><span>{item.status === "published" ? "Опубликовано" : item.status === "hidden" ? "Скрыто" : "Ожидает проверки"}</span><time>{new Date(item.createdAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</time></header><textarea maxLength={700} rows={5} value={item.content} onChange={(event) => editFeedback(item.id, { content: event.target.value })}/><footer><small>{item.content.length} / 700</small><button type="button" disabled={loading || item.content.trim().length < 10} onClick={() => void saveFeedback(item)}>Сохранить</button><button className="feedback-publish" type="button" disabled={loading || item.content.trim().length < 10} onClick={() => void saveFeedback(item, "published")}>Опубликовать</button><button className="feedback-hide" type="button" disabled={loading} onClick={() => void saveFeedback(item, "hidden")}>Скрыть</button><button className="feedback-delete" type="button" disabled={loading} onClick={() => void deleteFeedback(item.id)}>Удалить</button></footer></article>)}</div>}</section>
+
+          <LegalDocumentsAdmin consultantToken={accessKey} />
 
           {!selected ? <div className="cabinet-empty">Выберите консультацию в перечне выше.</div> : (
             <article className={`consultation-editor ${selected.status}`} key={selected.id}>

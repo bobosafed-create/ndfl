@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import LegalFooterLinks from "../../components/LegalFooterLinks";
 
 export default function OwnershipPeriodPage() {
   function goToConsultation() {
@@ -93,7 +94,7 @@ export default function OwnershipPeriodPage() {
         <aside><strong>390 ₽</strong><b>Проверка ситуации — до 4 часов</b><small>Допопция «Срочно» до 2 часов доступна на главной странице за 300 ₽</small><button type="button" onClick={goToConsultation}>Проверить мой срок владения →</button><em>Без регистрации</em></aside>
       </section>
 
-      <footer className="calc-footer"><p>Информация на странице носит предварительный характер и не заменяет проверку документов.</p><nav><Link href="/legal#offer">Оферта</Link><Link href="/legal#privacy">Конфиденциальность</Link><Link href="/legal#contacts">Контакты</Link></nav></footer>
+      <footer className="calc-footer"><p>Информация на странице носит предварительный характер и не заменяет проверку документов.</p><LegalFooterLinks /></footer>
     </main>
   );
 }

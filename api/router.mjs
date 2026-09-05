@@ -18,6 +18,7 @@ import {
 } from "../lib/ai.mjs";
 import { CONSULTATION_TARIFFS, URGENT_ADDON, resolveTariff } from "../lib/tariffs.mjs";
 import { isServiceOpen } from "../lib/service-schedule.mjs";
+import { routeLegalDocuments } from "./legal-documents.mjs";
 
 const rateLimits = new Map();
 const ANSWER_NOTICE = "Пометка консультанта: Ответ составлен по предоставленным данным. Если у вас имеются дополнительные обезличенные сведения, способные повлиять на вывод, оформите новый вопрос в том же порядке, что и первоначальный.";
@@ -1105,6 +1106,8 @@ export async function routeApi(request) {
   const url = new URL(request.url);
   const route = `${request.method} ${url.pathname}`;
   try {
+    const legalDocumentsResponse = await routeLegalDocuments(request);
+    if (legalDocumentsResponse) return legalDocumentsResponse;
     if (route === "GET /api/consultation-price") return publicPrice();
     if (route === "GET /api/tariffs") return publicTariffs();
     if (route === "GET /api/feedback") return publicFeedbackList();

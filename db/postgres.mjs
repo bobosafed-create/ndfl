@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import pg from "pg";
+import { DEFAULT_LEGAL_DOCUMENTS } from "../lib/legal-documents.mjs";
 
 const { Pool } = pg;
 
@@ -241,6 +243,45 @@ migrations.push({
   ],
 });
 
+migrations.push({
+  version: 14,
+  statements: [
+    `CREATE TABLE IF NOT EXISTS legal_documents (
+      id uuid PRIMARY KEY,
+      slug varchar(64) NOT NULL UNIQUE CHECK (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
+      title varchar(160) NOT NULL,
+      footer_label varchar(80) NOT NULL,
+      body text NOT NULL,
+      status varchar(16) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published')),
+      show_in_footer boolean NOT NULL DEFAULT false,
+      sort_order integer NOT NULL DEFAULT 100 CHECK (sort_order BETWEEN 0 AND 999),
+      is_system boolean NOT NULL DEFAULT false,
+      revision integer NOT NULL DEFAULT 1 CHECK (revision > 0),
+      published_revision integer CHECK (published_revision IS NULL OR published_revision > 0),
+      published_at timestamptz,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS legal_documents_public_idx
+      ON legal_documents (status, show_in_footer, sort_order)`,
+    `CREATE TABLE IF NOT EXISTS legal_document_versions (
+      id uuid PRIMARY KEY,
+      document_id uuid NOT NULL REFERENCES legal_documents(id) ON DELETE CASCADE,
+      revision integer NOT NULL CHECK (revision > 0),
+      title varchar(160) NOT NULL,
+      footer_label varchar(80) NOT NULL,
+      body text NOT NULL,
+      status varchar(16) NOT NULL CHECK (status IN ('draft', 'published')),
+      show_in_footer boolean NOT NULL,
+      sort_order integer NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      UNIQUE (document_id, revision)
+    )`,
+    `CREATE INDEX IF NOT EXISTS legal_document_versions_document_idx
+      ON legal_document_versions (document_id, revision DESC)`,
+  ],
+});
+
 function missingDatabaseVariables() {
   return requiredVariables.filter((name) => !process.env[name]);
 }
@@ -315,6 +356,24 @@ export async function initializeDatabase() {
       await client.query(
         "INSERT INTO schema_migrations (version) VALUES ($1)",
         [migration.version],
+      );
+    }
+
+    for (const document of DEFAULT_LEGAL_DOCUMENTS) {
+      await client.query(
+        `INSERT INTO legal_documents
+          (id, slug, title, footer_label, body, status, show_in_footer, sort_order, is_system, revision, published_revision, published_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, 'published', $6, $7, true, 1, 1, $8, $8)
+         ON CONFLICT (slug) DO NOTHING`,
+        [document.id, document.slug, document.title, document.footerLabel, document.body, document.showInFooter, document.sortOrder, document.updatedAt],
+      );
+      await client.query(
+        `INSERT INTO legal_document_versions
+          (id, document_id, revision, title, footer_label, body, status, show_in_footer, sort_order, created_at)
+         SELECT $2, id, revision, title, footer_label, body, status, show_in_footer, sort_order, updated_at
+         FROM legal_documents WHERE slug = $1 AND revision = 1
+         ON CONFLICT (document_id, revision) DO NOTHING`,
+        [document.slug, randomUUID()],
       );
     }
 

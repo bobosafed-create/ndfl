@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { reachMetrikaGoal } from "../lib/metrika";
 import { isServiceOpen } from "../lib/service-schedule.mjs";
+import LegalFooterLinks from "../components/LegalFooterLinks";
 
 type Stage = "room" | "payment" | "question" | "waiting" | "answer";
 type Tariff = { code: string; name: string; description: string; amountKopecks: number; deadlineMinutes: number; recommended?: boolean; available?: boolean };
@@ -765,7 +766,7 @@ export default function Home() {
 
       {scheduleNoticeVisible && <div className="schedule-closed-backdrop"><section className="payment-card schedule-closed-card" role="alertdialog" aria-modal="true" aria-labelledby="schedule-closed-title"><button className="close" type="button" onClick={() => setScheduleNoticeVisible(false)} aria-label="Закрыть">×</button><span className="schedule-closed-icon" aria-hidden="true">◷</span><small>Приём вопросов закрыт</small><h3 id="schedule-closed-title">В настоящее время вопросы недоступны</h3><p>Посмотрите расписание на сайте. Приносим извинения за неудобства.</p><button className="action-button" type="button" onClick={showSchedule}>Посмотреть расписание</button></section></div>}
 
-      <footer><div className="brand"><span className="brand-mark">₽</span><span>НДФЛ<span className="brand-dot">.просто</span></span></div><nav aria-label="Правовая информация"><a href="/legal#offer">Оферта</a><a href="/legal#privacy">Конфиденциальность</a><a href="/legal#refunds">Возврат</a><a href="/legal#contacts">Контакты</a></nav><a href="#top">Наверх ↑</a></footer>
+      <footer><div className="brand"><span className="brand-mark">₽</span><span>НДФЛ<span className="brand-dot">.просто</span></span></div><LegalFooterLinks /><a href="#top">Наверх ↑</a></footer>
       {stage === "room" && <button className="mobile-question-cta" type="button" onClick={() => document.getElementById("diagnostic")?.scrollIntoView({ behavior: "smooth" })}>Проверить НДФЛ</button>}
     </main>
   );

@@ -214,19 +214,30 @@ test("sets the selected tariff deadline when the visitor saves a question", asyn
 });
 
 test("legal documents describe the anonymous mode without hiding technical processing", async () => {
-  const legal = await readFile(new URL("../app/legal/page.tsx", import.meta.url), "utf8");
+  const legal = await readFile(new URL("../app/legal/LegalDocumentsClient.tsx", import.meta.url), "utf8");
+  const defaults = await readFile(new URL("../lib/legal-documents.mjs", import.meta.url), "utf8");
   assert.match(legal, /<a className="cabinet-back" href="\/#room" aria-label="Вернуться на сайт">/);
   assert.doesNotMatch(legal, /next\/link/);
-  assert.match(legal, /не идентифицирует и не персонализирует Посетителя/);
-  assert.match(legal, /Функция загрузки файлов и документов отключена/);
-  assert.match(legal, /не означает полного отсутствия технической обработки/);
-  assert.match(legal, /IP-адрес и время запросов/);
-  assert.match(legal, /Проверка ситуации/);
-  assert.match(legal, /Расчёт и подробный разбор/);
-  assert.match(legal, /Допопция «Срочно» стоит 300 рублей/);
-  assert.match(legal, /не ограничивает обязательные права потребителя/);
-  assert.match(legal, /добровольно доплатить 600 рублей/);
-  assert.match(legal, /автоматический возврат первоначального платежа не производится/);
+  assert.match(defaults, /не идентифицирует и не персонализирует Посетителя/);
+  assert.match(defaults, /Функция загрузки файлов и документов отключена/);
+  assert.match(defaults, /не означает полного отсутствия технической обработки/);
+  assert.match(defaults, /IP-адрес и время запросов/);
+  assert.match(defaults, /Проверка ситуации/);
+  assert.match(defaults, /Расчёт и подробный разбор/);
+  assert.match(defaults, /Допопция «Срочно» стоит 300 рублей/);
+  assert.match(defaults, /не ограничивает обязательные права потребителя/);
+  assert.match(defaults, /добровольно доплатить 600 рублей/);
+  assert.match(defaults, /автоматический возврат первоначального платежа не производится/);
+});
+
+test("legal documents remain available as server-rendered fallback and update from the database", async () => {
+  const page = await readFile(new URL("../app/legal/page.tsx", import.meta.url), "utf8");
+  const client = await readFile(new URL("../app/legal/LegalDocumentsClient.tsx", import.meta.url), "utf8");
+  const footer = await readFile(new URL("../components/LegalFooterLinks.tsx", import.meta.url), "utf8");
+  assert.match(page, /initialDocuments=\{DEFAULT_LEGAL_DOCUMENTS\}/);
+  assert.match(client, /fetch\("\/api\/legal-documents"/);
+  assert.match(footer, /item\.showInFooter/);
+  assert.match(footer, /`\/legal#\$\{item\.slug\}`/);
 });
 
 test("renders the consultant cabinet", async () => {
