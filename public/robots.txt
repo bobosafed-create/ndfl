@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /consultant/
+Disallow: /cons/
+
+Sitemap: https://ndfl-prosto.ru/sitemap.xml
+Host: ndfl-prosto.ru

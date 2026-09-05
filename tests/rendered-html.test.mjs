@@ -31,6 +31,12 @@ test("server-renders the consultation landing page", async () => {
   const html = await response.text();
   assert.match(html, /<title>Проверьте свой НДФЛ/i);
   assert.match(html, /<meta name="yandex-verification" content="f621b7b1fac1315f"/i);
+  assert.match(html, /<link rel="canonical" href="https:\/\/ndfl-prosto\.ru\/?"/i);
+  assert.match(html, /type="application\/ld\+json"/i);
+  assert.match(html, /"@type":"WebSite"/);
+  assert.match(html, /"@type":"ProfessionalService"/);
+  assert.match(html, /"@type":"Service"/);
+  assert.doesNotMatch(html, /AggregateRating|ratingValue/);
   assert.match(html, /Проверьте свой/);
   assert.match(html, /Выберите свою ситуацию/);
   assert.match(html, /Не уверены, что вам вообще нужна консультация/);
@@ -71,6 +77,20 @@ test("server-renders the consultation landing page", async () => {
   assert.match(html, /Не уверены в расчёте НДФЛ/);
   assert.doesNotMatch(html, /Опубликованных отзывов пока нет/);
   assert.doesNotMatch(html, /codex-preview|Building your site/);
+});
+
+test("publishes crawler rules and a sitemap containing only public pages", async () => {
+  const robots = await readFile(new URL("../public/robots.txt", import.meta.url), "utf8");
+  const sitemap = await readFile(new URL("../public/sitemap.xml", import.meta.url), "utf8");
+  assert.match(robots, /User-agent: \*/);
+  assert.match(robots, /Disallow: \/api\//);
+  assert.match(robots, /Disallow: \/consultant\//);
+  assert.match(robots, /Sitemap: https:\/\/ndfl-prosto\.ru\/sitemap\.xml/);
+  assert.match(sitemap, /https:\/\/ndfl-prosto\.ru\//);
+  assert.match(sitemap, /https:\/\/ndfl-prosto\.ru\/calc/);
+  assert.match(sitemap, /https:\/\/ndfl-prosto\.ru\/srok-vladeniya/);
+  assert.match(sitemap, /https:\/\/ndfl-prosto\.ru\/legal/);
+  assert.doesNotMatch(sitemap, /\/consultant|\/cons|\/api/);
 });
 
 test("provides a distinct free diagnostic for every situation", async () => {
@@ -211,6 +231,7 @@ test("legal documents describe the anonymous mode without hiding technical proce
 
 test("renders the consultant cabinet", async () => {
   const page = await readFile(new URL("../app/consultant/page.tsx", import.meta.url), "utf8");
+  const layout = await readFile(new URL("../app/consultant/layout.tsx", import.meta.url), "utf8");
   assert.match(page, /Кабинет консультанта/);
   assert.match(page, /\/api\/consultant\/consultations/);
   assert.match(page, /Отправить в сейф/);
@@ -260,6 +281,7 @@ test("renders the consultant cabinet", async () => {
   assert.match(page, /Доплата получена/);
   assert.match(page, /\/api\/consultant\/request-upgrade/);
   assert.doesNotMatch(page, /Старые тестовые записи|Тестовых записей нет|не являются платежами ЮKassa/);
+  assert.match(layout, /robots: \{ index: false, follow: false, noarchive: true \}/);
 });
 
 test("provides the short consultant cabinet address", async () => {
