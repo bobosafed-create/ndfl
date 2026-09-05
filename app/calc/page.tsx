@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import LegalFooterLinks from "../../components/LegalFooterLinks";
+import { reachMetrikaGoal } from "../../lib/metrika";
 
 const RUB = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });
 const CONSULTATION_PRICE = 990;
@@ -82,6 +83,7 @@ export default function CalculatorPage() {
           <h2 id="example-heading">Квартира от застройщика без отделки</h2>
           <h3>Проверьте возможную экономию</h3>
           <p>Введите три суммы и ответьте на два важных вопроса. Остальные обстоятельства после заказа проверит консультант.</p>
+          <p className="related-inline-note">Если вы ещё не определили, истёк ли минимальный срок владения, <Link href="/srok-vladeniya" onClick={() => reachMetrikaGoal("content_period_open", { source: "calculator" })}>сначала проверьте срок — возможно, налог вообще не возникает →</Link></p>
         </header>
         <div className="simple-calc-card">
           <div className="simple-calc-inputs">
@@ -107,7 +109,7 @@ export default function CalculatorPage() {
 
       <section className="savings-offer">
         <div><span>Следующий шаг</span><h2>Проверьте расчёт до подачи 3-НДФЛ</h2><p>Цифры из калькулятора будут перенесены в бланк вопроса. Вы сможете дополнить и отредактировать их перед отправкой.</p></div>
-        <aside><strong>990 ₽</strong><b>Расчёт и подробный разбор — до 8 часов</b><small>Допопцию «Срочно» до 2 часов можно выбрать на главной странице за 300 ₽</small><button type="button" onClick={goToConsultation}>Перейти к персональному разбору →</button><em>Без регистрации</em></aside>
+        <aside><strong>990 ₽</strong><b>Расчёт и подробный разбор — до 8 часов</b><small>Допопцию «Срочно» до 2 часов можно выбрать на главной странице за 300 ₽</small><button type="button" onClick={() => { reachMetrikaGoal("content_to_consultation", { source: "calculator", tariff: "detailed-review" }); goToConsultation(); }}>Перейти к персональному разбору →</button><em>Без регистрации</em></aside>
       </section>
 
       <footer className="calc-footer"><p>Предварительный пример не заменяет проверку договора, расходов и подтверждающих документов.</p><LegalFooterLinks /></footer>

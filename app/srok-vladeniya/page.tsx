@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import LegalFooterLinks from "../../components/LegalFooterLinks";
+import { reachMetrikaGoal } from "../../lib/metrika";
 
 export default function OwnershipPeriodPage() {
   function goToConsultation() {
@@ -89,9 +90,14 @@ export default function OwnershipPeriodPage() {
         <p className="savings-caveat period-caveat">Результат зависит от вида объекта, даты и основания приобретения, состава собственности супругов и других обстоятельств. Вывод «налог 0 ₽» можно делать только после проверки документов.</p>
       </section>
 
+      <aside className="period-calculator-link" aria-labelledby="period-calculator-heading">
+        <div><span>Если срок ещё не истёк</span><h2 id="period-calculator-heading">Предварительно рассчитайте налог и возможную экономию</h2><p>Калькулятор покажет, как подтверждённые расходы на отделку могут повлиять на НДФЛ при продаже квартиры.</p></div>
+        <Link href="/calc" onClick={() => reachMetrikaGoal("content_calc_open", { source: "ownership_period" })}>Открыть калькулятор →</Link>
+      </aside>
+
       <section className="savings-offer">
         <div><span>Следующий шаг</span><h2>Узнайте, нужно ли вам платить налог</h2><p>После оплаты в бланк вопроса будет перенесена заготовка. Добавьте основание приобретения квартиры и даты — консультант проверит срок владения.</p></div>
-        <aside><strong>390 ₽</strong><b>Проверка ситуации — до 4 часов</b><small>Допопция «Срочно» до 2 часов доступна на главной странице за 300 ₽</small><button type="button" onClick={goToConsultation}>Проверить мой срок владения →</button><em>Без регистрации</em></aside>
+        <aside><strong>390 ₽</strong><b>Проверка ситуации — до 4 часов</b><small>Допопция «Срочно» до 2 часов доступна на главной странице за 300 ₽</small><button type="button" onClick={() => { reachMetrikaGoal("content_to_consultation", { source: "ownership_period", tariff: "situation-check" }); goToConsultation(); }}>Проверить мой срок владения →</button><em>Без регистрации</em></aside>
       </section>
 
       <footer className="calc-footer"><p>Информация на странице носит предварительный характер и не заменяет проверку документов.</p><LegalFooterLinks /></footer>

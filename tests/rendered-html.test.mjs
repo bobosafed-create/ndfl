@@ -87,6 +87,7 @@ test("publishes crawler rules and a sitemap containing only public pages", async
   assert.match(robots, /Disallow: \/consultant\//);
   assert.match(robots, /Sitemap: https:\/\/ndfl-prosto\.ru\/sitemap\.xml/);
   assert.match(sitemap, /https:\/\/ndfl-prosto\.ru\//);
+  assert.match(sitemap, /https:\/\/ndfl-prosto\.ru\/prodazha-kvartiry/);
   assert.match(sitemap, /https:\/\/ndfl-prosto\.ru\/calc/);
   assert.match(sitemap, /https:\/\/ndfl-prosto\.ru\/srok-vladeniya/);
   assert.match(sitemap, /https:\/\/ndfl-prosto\.ru\/legal/);
@@ -117,6 +118,8 @@ test("renders the preliminary apartment-sale tax calculator", async () => {
   assert.match(html, /Проверьте возможную экономию/);
   assert.match(html, /подп\. 4 и 5 п\. 3 статьи 220 НК РФ/);
   assert.match(html, /Не всякий ремонт или покупка для интерьера признаются отделкой/);
+  assert.match(html, /сначала проверьте срок/);
+  assert.match(html, /href="\/srok-vladeniya"/);
   assert.doesNotMatch(html, /Покупка — 5 млн ₽/);
   assert.doesNotMatch(html, /130 000 ₽ налога|115 050 ₽ налога|Экономия — 14 950 ₽/);
   assert.doesNotMatch(html, /Кадастровая стоимость на 1 января|Региональный коэффициент/);
@@ -133,6 +136,27 @@ test("renders the ownership-period landing page with qualified legal claims", as
   assert.match(html, /Новое жильё, купленное не более чем за 90 дней/);
   assert.match(html, /Налог может оказаться равен 0 ₽/);
   assert.match(html, /только после проверки документов/);
+  assert.match(html, /Предварительно рассчитайте налог и возможную экономию/);
+  assert.match(html, /href="\/calc"/);
+});
+
+test("connects the apartment-sale hub to the diagnostic and both thematic tools", async () => {
+  const response = await render("/prodazha-kvartiry");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /<title>НДФЛ при продаже квартиры/);
+  assert.match(html, /Продали квартиру/);
+  assert.match(html, /Четыре ключевые проверки/);
+  assert.match(html, /Минимальный срок владения/);
+  assert.match(html, /Доход для расчёта/);
+  assert.match(html, /Расходы или имущественный вычет/);
+  assert.match(html, /3-НДФЛ и сроки/);
+  assert.match(html, /href="\/srok-vladeniya"/);
+  assert.match(html, /href="\/calc"/);
+  assert.match(html, /situation=prodazha-kvartiry/);
+  assert.match(html, /Официальные материалы ФНС России/);
+  assert.match(html, /"@type":"WebPage"/);
+  assert.match(html, /prodazha-kvartiry#webpage/);
 });
 
 test("landing-page back buttons force a reliable return to the home page", async () => {
@@ -193,7 +217,10 @@ test("keeps consultation codes four digits and uses the protected payment flow",
   assert.match(page, /Скачать ответ/);
   assert.match(page, /Печать \/ PDF/);
   assert.doesNotMatch(page, /Опубликованных отзывов пока нет/);
-  assert.match(page, /data-future-path/);
+  assert.match(page, /Подробнее о продаже квартиры/);
+  assert.match(page, /Полезные инструменты до консультации/);
+  assert.match(page, /new URLSearchParams\(window\.location\.search\)\.get\("situation"\)/);
+  assert.doesNotMatch(page, /а позже сможет вести на отдельную тематическую страницу/);
   assert.match(page, /\/api\/visits/);
   assert.match(page, /\/api\/consultant\/visitor-stats/);
   assert.match(page, /stage === "payment" \? 4000 : 10000/);

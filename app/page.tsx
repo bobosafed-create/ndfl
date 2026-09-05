@@ -10,6 +10,8 @@ type Tariff = { code: string; name: string; description: string; amountKopecks: 
 type UrgentAddon = { code: string; name: string; description: string; amountKopecks: number; deadlineMinutes: number; available?: boolean };
 type ScheduleDay = { day: string; enabled: boolean; start: string; end: string };
 type UpgradeStatus = null | "requested" | "declined" | "awaiting_payment" | "completed";
+type SituationResource = { href: string; label: string; goal: "content_apartment_open" | "content_period_open" | "content_calc_open" };
+type Situation = { slug: string; title: string; text: string; diagnostic: string; path: string; published: boolean; resources?: SituationResource[] };
 
 const scheduleDayLabels: Record<string, string> = {
   monday: "Понедельник", tuesday: "Вторник", wednesday: "Среда", thursday: "Четверг",
@@ -67,8 +69,10 @@ const tariffAssessmentQuestions = [
 
 type TariffAssessmentId = typeof tariffAssessmentQuestions[number]["id"];
 
-const situations = [
-  { slug: "prodazha-kvartiry", title: "Продал квартиру", text: "Срок владения, расходы, вычет и обязанность подать 3-НДФЛ.", diagnostic: "Для ситуации «Продал квартиру» важны: минимальный срок владения, правило 70% кадастровой стоимости, оптимизация налогооблагаемой базы, сроки отчётности и оплаты, сохранность документов и сроки их хранения.", path: "/prodazha-kvartiry/", published: false },
+const situations: Situation[] = [
+  { slug: "prodazha-kvartiry", title: "Продал квартиру", text: "Срок владения, расходы, вычет и обязанность подать 3-НДФЛ.", diagnostic: "Для ситуации «Продал квартиру» важны: минимальный срок владения, правило 70% кадастровой стоимости, оптимизация налогооблагаемой базы, сроки отчётности и оплаты, сохранность документов и сроки их хранения.", path: "/prodazha-kvartiry", published: true, resources: [
+    { href: "/prodazha-kvartiry", label: "Подробнее о продаже квартиры", goal: "content_apartment_open" },
+  ] },
   { slug: "prodazha-avtomobilya", title: "Продал автомобиль", text: "Нужно ли декларировать доход и можно ли учесть стоимость покупки.", diagnostic: "Для ситуации «Продал автомобиль» важны: срок владения, сумма продажи, расчёт налогооблагаемой базы — уменьшение суммы продажи на стандартный вычет или на сумму документально подтверждённых расходов, сроки отчётности и оплаты.", path: "/prodazha-avtomobilya/", published: false },
   { slug: "pokupka-kvartiry", title: "Купил квартиру", text: "Имущественный вычет и возврат НДФЛ, включая ипотечные проценты.", diagnostic: "Для ситуации «Купил квартиру» важны: право на имущественный вычет, точка отсчёта для вычета, распределение вычета в браке, срок владения для будущей продажи.", path: "/vychet-pokupka-kvartiry/", published: false },
   { slug: "lechenie", title: "Оплачивал лечение", text: "Социальный вычет за лечение, лекарства и медицинские услуги.", diagnostic: "Для ситуации «Оплачивал лечение» важны: право на вычет, код услуги в справке, за кого оплачено, срок давности, пакет документов.", path: "/vychet-lechenie/", published: false },
@@ -77,7 +81,7 @@ const situations = [
   { slug: "arenda", title: "Сдавал имущество", text: "НДФЛ с аренды, декларация и подходящий порядок уплаты.", diagnostic: "Для ситуации «Сдавал имущество» важны: статус арендатора как налогового агента, налоговый режим, налоговая база и коммунальные услуги, сроки отчётности и оплаты, регистрация долгосрочных договоров, сохранность документов и сроки их хранения.", path: "/arenda/", published: false },
   { slug: "investitsii", title: "Акции, дивиденды, инвестиции", text: "Доходы у брокера, дивиденды, убытки и инвестиционные вычеты.", diagnostic: "Для ситуации «Акции, дивиденды, инвестиции» важны: роль брокера как налогового агента, дивиденды и двойное налогообложение, налоговые льготы — льгота долгосрочного владения и ИИС, сальдирование убытков, сверка данных и сроки.", path: "/investitsii/", published: false },
   { slug: "drugaya-situatsiya", title: "Другая ситуация", text: "Разберём нестандартный доход, вычет или уведомление налоговой.", diagnostic: "Для другой ситуации важны: вид дохода или вычета, даты и суммы, основание получения дохода, подтверждающие документы, сведения налогового агента, сроки отчётности и оплаты.", path: "/drugaya-situatsiya/", published: false },
-] as const;
+];
 
 function tariffDeadline(minutes: number) {
   if (minutes === 60) return "Ответ в течение 1 часа";
@@ -281,7 +285,19 @@ export default function Home() {
 
   useEffect(() => {
     const calculatorSummary = window.sessionStorage.getItem("ndfl-calculator-summary");
-    if (calculatorSummary) setQuestion((current) => current || calculatorSummary.slice(0, 1200));
+    if (!calculatorSummary) return;
+    const timer = window.setTimeout(() => setQuestion((current) => current || calculatorSummary.slice(0, 1200)), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    const requestedSituation = new URLSearchParams(window.location.search).get("situation");
+    if (!requestedSituation || !situations.some((item) => item.slug === requestedSituation)) return;
+    const timer = window.setTimeout(() => {
+      setDiagnosticSituation(requestedSituation);
+      setDiagnosticComplete(false);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -616,10 +632,21 @@ export default function Home() {
       </header>
 
       <section className="situations-section" aria-labelledby="situations-heading">
-        <div className="content-heading"><span>Что у вас произошло?</span><h2 id="situations-heading">Выберите свою ситуацию</h2><p>Не нужно заранее разбираться в Налоговом кодексе. Выберите тему — сейчас карточка откроет бесплатную первичную диагностику, а позже сможет вести на отдельную тематическую страницу.</p></div>
+        <div className="content-heading"><span>Что у вас произошло?</span><h2 id="situations-heading">Выберите свою ситуацию</h2><p>Выберите тему для бесплатной первичной диагностики. Для продажи квартиры также доступны подробные материалы и калькулятор.</p></div>
         <div className="situations-grid">
-          {situations.map((item, index) => <a key={item.slug} href={item.published ? item.path : "#diagnostic"} data-future-path={item.path} onClick={() => { setDiagnosticSituation(item.slug); setDiagnosticComplete(false); }}><span>{String(index + 1).padStart(2, "0")}</span><h3>{item.title}</h3><p>{item.text}</p><b>Проверить ситуацию →</b></a>)}
+          {situations.map((item, index) => <article key={item.slug} className={item.resources ? "has-resources" : undefined}>
+            <span>{String(index + 1).padStart(2, "0")}</span><h3>{item.title}</h3><p>{item.text}</p>
+            {item.resources && <div className="situation-resources"><small>Полезные материалы</small>{item.resources.map((resource) => <a key={resource.href} href={resource.href} onClick={() => reachMetrikaGoal(resource.goal, { source: "apartment_card" })}>{resource.label} →</a>)}</div>}
+            <a className="situation-diagnostic-link" href="#diagnostic" onClick={() => { setDiagnosticSituation(item.slug); setDiagnosticComplete(false); }}>Проверить ситуацию →</a>
+          </article>)}
         </div>
+        <aside className="home-tools" aria-labelledby="home-tools-heading">
+          <div><span>Полезные инструменты до консультации</span><h3 id="home-tools-heading">Разберитесь в продаже квартиры на конкретных примерах</h3><p>Проверьте срок владения или предварительно рассчитайте налог. После этого при необходимости можно передать исходные данные консультанту.</p></div>
+          <nav aria-label="Материалы о продаже квартиры">
+            <a href="/srok-vladeniya" onClick={() => reachMetrikaGoal("content_period_open", { source: "home_tools" })}><small>Срок владения квартирой</small><b>Определите, какой срок применяется и возникает ли НДФЛ.</b><span>Проверить срок →</span></a>
+            <a href="/calc" onClick={() => reachMetrikaGoal("content_calc_open", { source: "home_tools" })}><small>Калькулятор налога</small><b>Сравните варианты расчёта и возможную экономию.</b><span>Рассчитать налог →</span></a>
+          </nav>
+        </aside>
       </section>
 
       <section id="diagnostic" className="diagnostic-section" aria-labelledby="diagnostic-heading">
@@ -697,7 +724,7 @@ export default function Home() {
           <legend>Подберём минимально подходящий тариф</legend>
           <p>Отметьте всё, что относится к вашему вопросу. Если подходит хотя бы один пункт, потребуется подробный разбор.</p>
           <div className="tariff-assessment-grid">{tariffAssessmentQuestions.map((item) => <label key={item.id} className={tariffAssessmentFlags.includes(item.id) ? "selected" : ""}><input type="checkbox" checked={tariffAssessmentFlags.includes(item.id)} onChange={(event) => toggleTariffAssessment(item.id, event.target.checked)} /><span>{item.label}</span></label>)}</div>
-          <label className={`tariff-simple-choice ${simpleAssessmentConfirmed ? "selected" : ""}`}><input type="checkbox" checked={simpleAssessmentConfirmed} onChange={(event) => confirmSimpleAssessment(event.target.checked)} /><span><b>Ничего из перечисленного не требуется</b><small>Один объект или одна операция, краткий вывод и общий порядок действий без сложного расчёта.</small></span></label>
+          <label htmlFor="tariff-simple-choice" aria-label="Ничего из перечисленного не требуется" className={`tariff-simple-choice ${simpleAssessmentConfirmed ? "selected" : ""}`}><input id="tariff-simple-choice" type="checkbox" checked={simpleAssessmentConfirmed} onChange={(event) => confirmSimpleAssessment(event.target.checked)} /><span><b>Ничего из перечисленного не требуется</b><small>Один объект или одна операция, краткий вывод и общий порядок действий без сложного расчёта.</small></span></label>
           {tariffAssessmentMessage && <div className={`tariff-assessment-result ${requiresDetailedTariff ? "detailed" : "simple"}`} role="status">{tariffAssessmentMessage}</div>}
         </fieldset>
         <div id="tariff-options" className="tariff-grid" role="radiogroup" aria-label="Тариф консультации">
