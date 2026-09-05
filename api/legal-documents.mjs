@@ -166,16 +166,23 @@ async function updateDocument(request) {
     }
     const revision = current.rows[0].revision + 1;
     const status = input.action === "publish" ? "published" : "draft";
-    const updated = await client.query(
-      `UPDATE legal_documents
-       SET title = $2, footer_label = $3, body = $4, status = $5,
-           show_in_footer = $6, sort_order = $7, revision = $8,
-           published_revision = CASE WHEN $5 = 'published' THEN $8 ELSE published_revision END,
-           published_at = CASE WHEN $5 = 'published' THEN now() ELSE published_at END,
-           updated_at = now()
-       WHERE id = $1 RETURNING *`,
-      [input.id, value.title, value.footerLabel, value.body, status, value.showInFooter, value.sortOrder, revision],
-    );
+    const updateValues = [input.id, value.title, value.footerLabel, value.body, value.showInFooter, value.sortOrder, revision];
+    const updated = status === "published"
+      ? await client.query(
+        `UPDATE legal_documents
+         SET title = $2, footer_label = $3, body = $4, status = 'published',
+             show_in_footer = $5, sort_order = $6, revision = $7,
+             published_revision = $7, published_at = now(), updated_at = now()
+         WHERE id = $1 RETURNING *`,
+        updateValues,
+      )
+      : await client.query(
+        `UPDATE legal_documents
+         SET title = $2, footer_label = $3, body = $4, status = 'draft',
+             show_in_footer = $5, sort_order = $6, revision = $7, updated_at = now()
+         WHERE id = $1 RETURNING *`,
+        updateValues,
+      );
     await client.query(
       `INSERT INTO legal_document_versions
         (id, document_id, revision, title, footer_label, body, status, show_in_footer, sort_order)
@@ -186,7 +193,8 @@ async function updateDocument(request) {
     return json({ document: mapDocument(updated.rows[0]) });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
-    throw error;
+    console.error(`Legal document update failed: code=${error?.code ?? "unknown"}; constraint=${error?.constraint ?? "none"}`);
+    return json({ error: "document_update_failed" }, 500);
   } finally {
     client.release();
   }

@@ -357,6 +357,9 @@ test("site documents use versioned database storage and authenticated administra
   assert.match(api, /published_revision/);
   assert.match(api, /DELETE FROM legal_documents WHERE id = \$1 AND is_system = false/);
   assert.match(api, /status = 'draft'/);
+  assert.match(api, /status === "published"/);
+  assert.doesNotMatch(api, /CASE WHEN \$5 = 'published'/);
+  assert.match(api, /Legal document update failed: code=/);
   assert.doesNotMatch(editor, /dangerouslySetInnerHTML/);
   assert.match(editor, /Сохранить черновик/);
   assert.match(editor, /Опубликовать/);

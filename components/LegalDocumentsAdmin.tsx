@@ -56,7 +56,9 @@ export default function LegalDocumentsAdmin({ consultantToken }: { consultantTok
       await load(id);
       setMessage(creating ? "Документ создан как черновик." : action === "publish" ? "Новая редакция опубликована на сайте." : "Черновик сохранён. Опубликованная редакция не изменилась.");
     } catch (error) {
-      setMessage(error instanceof Error && error.message === "slug_exists" ? "Такой адрес документа уже используется." : "Не удалось сохранить документ. Проверьте поля и повторите попытку.");
+      if (error instanceof Error && error.message === "slug_exists") setMessage("Такой адрес документа уже используется.");
+      else if (error instanceof Error && error.message === "document_update_failed") setMessage("База данных не смогла создать новую редакцию. Ошибка записана в журнал приложения Timeweb.");
+      else setMessage("Не удалось сохранить документ. Проверьте поля и повторите попытку.");
     } finally { setBusy(false); }
   }
 
