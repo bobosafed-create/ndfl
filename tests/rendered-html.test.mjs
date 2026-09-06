@@ -149,11 +149,11 @@ test("connects the apartment-sale hub to the diagnostic and both thematic tools"
   assert.match(html, /Четыре ключевые проверки/);
   assert.match(html, /Минимальный срок владения/);
   assert.match(html, /Доход для расчёта/);
-  assert.match(html, /Расходы или имущественный вычет/);
+  assert.match(html, /Расходы на отделку квартиры/);
   assert.match(html, /3-НДФЛ и сроки/);
   assert.match(html, /За счёт чего уменьшить налогооблагаемую базу/);
-  assert.match(html, /Рекомендация консультанта/);
-  assert.match(html, /Если срок владения не истёк, проверьте способы уменьшить доход от продажи/);
+  assert.doesNotMatch(html, /Рекомендация консультанта/);
+  assert.doesNotMatch(html, /Если срок владения не истёк, проверьте способы уменьшить доход от продажи/);
   assert.match(html, /href="\/srok-vladeniya"/);
   assert.match(html, /href="\/calc"/);
   assert.match(html, /Пройти бесплатную диагностику/);
