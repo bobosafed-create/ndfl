@@ -19,12 +19,12 @@ export default function ApartmentSalePage() {
           <p>Цена продажи — не единственное, от чего зависит налог. Важны срок и основание владения, кадастровая стоимость, подтверждённые расходы, право на вычет и порядок декларирования.</p>
           <div className="apartment-hero-actions">
             <a href="#sale-routes">Что проверить <span>↓</span></a>
-            <a href="/?situation=prodazha-kvartiry#diagnostic" onClick={() => reachMetrikaGoal("content_to_consultation", { source: "apartment_landing", destination: "diagnostic" })}>Пройти бесплатную диагностику</a>
+            <button type="button" onClick={() => { reachMetrikaGoal("content_to_consultation", { source: "apartment_landing", destination: "diagnostic" }); window.location.assign("/?situation=prodazha-kvartiry#diagnostic"); }}>Пройти бесплатную диагностику</button>
           </div>
         </div>
         <aside>
           <small>Порядок проверки</small>
-          <ol><li><b>1</b><span>Возникает ли налог</span></li><li><b>2</b><span>Из какой суммы его считать</span></li><li><b>3</b><span>Чем уменьшить налоговую базу</span></li><li><b>4</b><span>Нужна ли декларация</span></li></ol>
+          <ol><li><b>1</b><span>Возникает ли налог</span></li><li><b>2</b><span>Из какой суммы его считать</span></li><li><b>3</b><span>За счёт чего уменьшить налогооблагаемую базу</span></li><li><b>4</b><span>Нужна ли декларация</span></li></ol>
         </aside>
       </header>
 
@@ -38,13 +38,10 @@ export default function ApartmentSalePage() {
         </div>
       </section>
 
-      <section className="apartment-tools" aria-labelledby="apartment-tools-heading">
-        <header><span>Полезные инструменты</span><h2 id="apartment-tools-heading">Два способа предварительно проверить ситуацию</h2></header>
-        <div>
-          <a href="/srok-vladeniya" onClick={() => reachMetrikaGoal("content_period_open", { source: "apartment_tools" })}><small>Сначала</small><strong>Определить срок владения</strong><p>Для наследства, приватизации, единственного жилья и других оснований.</p><b>Перейти к разбору →</b></a>
-          <a href="/calc" onClick={() => reachMetrikaGoal("content_calc_open", { source: "apartment_tools" })}><small>Если налог возможен</small><strong>Рассчитать налог и экономию</strong><p>Наглядный пример с подтверждёнными расходами на отделку.</p><b>Открыть калькулятор →</b></a>
-        </div>
-      </section>
+      <aside className="consultant-saving-tip" aria-labelledby="consultant-saving-tip-heading">
+        <div><span>Рекомендация консультанта</span><h2 id="consultant-saving-tip-heading">Если срок владения не истёк, проверьте способы уменьшить доход от продажи</h2><p>В отдельных ситуациях доход можно уменьшить на документально подтверждённые расходы. Калькулятор показывает частный пример с расходами на отделку квартиры, приобретённой у застройщика без отделки. Применимость расходов необходимо проверять по договору и документам.</p></div>
+        <a href="/calc" onClick={() => reachMetrikaGoal("content_calc_open", { source: "apartment_consultant_tip" })}>Открыть пример расчёта →</a>
+      </aside>
 
       <section className="apartment-checklist">
         <div><span>Подготовьте перед проверкой</span><h2>Какие сведения понадобятся</h2></div>
@@ -53,7 +50,7 @@ export default function ApartmentSalePage() {
 
       <section className="apartment-final">
         <div><span>Не уверены в результате?</span><h2>Начните с бесплатной первичной диагностики</h2><p>Вы получите предварительный обзор того, что важно проверить. Если потребуется персональный вывод или расчёт, сайт предложит подходящий формат консультации.</p></div>
-        <a href="/?situation=prodazha-kvartiry#diagnostic" onClick={() => reachMetrikaGoal("content_to_consultation", { source: "apartment_landing", destination: "diagnostic_bottom" })}>Проверить ситуацию бесплатно →</a>
+        <button type="button" onClick={() => { reachMetrikaGoal("content_to_consultation", { source: "apartment_landing", destination: "diagnostic_bottom" }); window.location.assign("/?situation=prodazha-kvartiry#diagnostic"); }}>Проверить ситуацию бесплатно →</button>
       </section>
 
       <section className="apartment-sources"><b>Официальные материалы ФНС России</b><a href="https://www.nalog.gov.ru/rn77/fl/interest/tax_deduction/fl_prned/" target="_blank" rel="noreferrer">Продажа недвижимости: сроки владения и кадастровая стоимость →</a><a href="https://www.nalog.gov.ru/rn77/taxation/taxes/ndfl/nalog_vichet/im_nv/im_nv_pri/" target="_blank" rel="noreferrer">Имущественный вычет при продаже имущества →</a></section>

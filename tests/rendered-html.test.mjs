@@ -129,15 +129,15 @@ test("renders the ownership-period landing page with qualified legal claims", as
   const response = await render("/srok-vladeniya");
   assert.equal(response.status, 200);
   const html = await response.text();
-  assert.match(html, /не выдержали/);
+  assert.match(html, /правильно определили/);
+  assert.match(html, /Сначала проверьте точку отсчёта/);
   assert.match(html, /Срок начинается со дня смерти наследодателя/);
   assert.match(html, /Для приватизации до 1 февраля 1998 года/);
   assert.match(html, /Минимальный срок — 3 года/);
   assert.match(html, /Новое жильё, купленное не более чем за 90 дней/);
   assert.match(html, /Налог может оказаться равен 0 ₽/);
   assert.match(html, /только после проверки документов/);
-  assert.match(html, /Предварительно рассчитайте налог и возможную экономию/);
-  assert.match(html, /href="\/calc"/);
+  assert.doesNotMatch(html, /Предварительно рассчитайте налог и возможную экономию/);
 });
 
 test("connects the apartment-sale hub to the diagnostic and both thematic tools", async () => {
@@ -151,9 +151,12 @@ test("connects the apartment-sale hub to the diagnostic and both thematic tools"
   assert.match(html, /Доход для расчёта/);
   assert.match(html, /Расходы или имущественный вычет/);
   assert.match(html, /3-НДФЛ и сроки/);
+  assert.match(html, /За счёт чего уменьшить налогооблагаемую базу/);
+  assert.match(html, /Рекомендация консультанта/);
+  assert.match(html, /Если срок владения не истёк, проверьте способы уменьшить доход от продажи/);
   assert.match(html, /href="\/srok-vladeniya"/);
   assert.match(html, /href="\/calc"/);
-  assert.match(html, /situation=prodazha-kvartiry/);
+  assert.match(html, /Пройти бесплатную диагностику/);
   assert.match(html, /Официальные материалы ФНС России/);
   assert.match(html, /"@type":"WebPage"/);
   assert.match(html, /prodazha-kvartiry#webpage/);
@@ -166,8 +169,9 @@ test("uses full-page navigation for thematic links on Timeweb", async () => {
   assert.match(apartmentPage, /<a href="\/srok-vladeniya"/);
   assert.match(apartmentPage, /<a href="\/calc"/);
   assert.doesNotMatch(apartmentPage, /<Link href="\/(?:srok-vladeniya|calc)"/);
+  assert.match(apartmentPage, /window\.location\.assign\("\/\?situation=prodazha-kvartiry#diagnostic"\)/);
   assert.match(calculatorPage, /<a href="\/srok-vladeniya"/);
-  assert.match(ownershipPage, /<a href="\/calc"/);
+  assert.doesNotMatch(ownershipPage, /<a href="\/calc"/);
 });
 
 test("landing-page back buttons force a reliable return to the home page", async () => {
