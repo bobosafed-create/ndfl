@@ -159,6 +159,17 @@ test("connects the apartment-sale hub to the diagnostic and both thematic tools"
   assert.match(html, /prodazha-kvartiry#webpage/);
 });
 
+test("uses full-page navigation for thematic links on Timeweb", async () => {
+  const apartmentPage = await readFile(new URL("../app/prodazha-kvartiry/page.tsx", import.meta.url), "utf8");
+  const calculatorPage = await readFile(new URL("../app/calc/page.tsx", import.meta.url), "utf8");
+  const ownershipPage = await readFile(new URL("../app/srok-vladeniya/page.tsx", import.meta.url), "utf8");
+  assert.match(apartmentPage, /<a href="\/srok-vladeniya"/);
+  assert.match(apartmentPage, /<a href="\/calc"/);
+  assert.doesNotMatch(apartmentPage, /<Link href="\/(?:srok-vladeniya|calc)"/);
+  assert.match(calculatorPage, /<a href="\/srok-vladeniya"/);
+  assert.match(ownershipPage, /<a href="\/calc"/);
+});
+
 test("landing-page back buttons force a reliable return to the home page", async () => {
   const calculatorPage = await readFile(new URL("../app/calc/page.tsx", import.meta.url), "utf8");
   const ownershipPage = await readFile(new URL("../app/srok-vladeniya/page.tsx", import.meta.url), "utf8");

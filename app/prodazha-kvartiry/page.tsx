@@ -19,7 +19,7 @@ export default function ApartmentSalePage() {
           <p>Цена продажи — не единственное, от чего зависит налог. Важны срок и основание владения, кадастровая стоимость, подтверждённые расходы, право на вычет и порядок декларирования.</p>
           <div className="apartment-hero-actions">
             <a href="#sale-routes">Что проверить <span>↓</span></a>
-            <Link href="/?situation=prodazha-kvartiry#diagnostic" onClick={() => reachMetrikaGoal("content_to_consultation", { source: "apartment_landing", destination: "diagnostic" })}>Пройти бесплатную диагностику</Link>
+            <a href="/?situation=prodazha-kvartiry#diagnostic" onClick={() => reachMetrikaGoal("content_to_consultation", { source: "apartment_landing", destination: "diagnostic" })}>Пройти бесплатную диагностику</a>
           </div>
         </div>
         <aside>
@@ -31,9 +31,9 @@ export default function ApartmentSalePage() {
       <section id="sale-routes" className="apartment-routes" aria-labelledby="sale-routes-heading">
         <header><span>Четыре ключевые проверки</span><h2 id="sale-routes-heading">Начните с вопроса, который влияет на результат</h2><p>Ответы зависят от документов и конкретных дат. Эта страница помогает выбрать правильный следующий шаг, но не заменяет индивидуальную проверку.</p></header>
         <div>
-          <article><span>01</span><h3>Минимальный срок владения</h3><p>Проверьте основание приобретения и юридически значимую дату. В разных ситуациях применяются разные сроки, а дата регистрации права не всегда является точкой отсчёта.</p><Link href="/srok-vladeniya" onClick={() => reachMetrikaGoal("content_period_open", { source: "apartment_landing" })}>Проверить срок владения →</Link></article>
+          <article><span>01</span><h3>Минимальный срок владения</h3><p>Проверьте основание приобретения и юридически значимую дату. В разных ситуациях применяются разные сроки, а дата регистрации права не всегда является точкой отсчёта.</p><a href="/srok-vladeniya" onClick={() => reachMetrikaGoal("content_period_open", { source: "apartment_landing" })}>Проверить срок владения →</a></article>
           <article><span>02</span><h3>Доход для расчёта</h3><p>Сопоставьте цену договора и кадастровую стоимость. Правило 70% кадастровой стоимости может повлиять на сумму дохода, принимаемую для налогообложения.</p></article>
-          <article><span>03</span><h3>Расходы или имущественный вычет</h3><p>Сравните допустимые варианты уменьшения дохода. Для подтверждённых расходов важны их состав, связь с приобретением квартиры и сохранность документов.</p><Link href="/calc" onClick={() => reachMetrikaGoal("content_calc_open", { source: "apartment_landing" })}>Открыть пример расчёта →</Link></article>
+          <article><span>03</span><h3>Расходы или имущественный вычет</h3><p>Сравните допустимые варианты уменьшения дохода. Для подтверждённых расходов важны их состав, связь с приобретением квартиры и сохранность документов.</p><a href="/calc" onClick={() => reachMetrikaGoal("content_calc_open", { source: "apartment_landing" })}>Открыть пример расчёта →</a></article>
           <article><span>04</span><h3>3-НДФЛ и сроки</h3><p>Отдельно проверьте обязанность подать декларацию, срок её представления и срок уплаты налога. Освобождение от налога и освобождение от декларирования требуют проверки условий.</p></article>
         </div>
       </section>
@@ -41,8 +41,8 @@ export default function ApartmentSalePage() {
       <section className="apartment-tools" aria-labelledby="apartment-tools-heading">
         <header><span>Полезные инструменты</span><h2 id="apartment-tools-heading">Два способа предварительно проверить ситуацию</h2></header>
         <div>
-          <Link href="/srok-vladeniya" onClick={() => reachMetrikaGoal("content_period_open", { source: "apartment_tools" })}><small>Сначала</small><strong>Определить срок владения</strong><p>Для наследства, приватизации, единственного жилья и других оснований.</p><b>Перейти к разбору →</b></Link>
-          <Link href="/calc" onClick={() => reachMetrikaGoal("content_calc_open", { source: "apartment_tools" })}><small>Если налог возможен</small><strong>Рассчитать налог и экономию</strong><p>Наглядный пример с подтверждёнными расходами на отделку.</p><b>Открыть калькулятор →</b></Link>
+          <a href="/srok-vladeniya" onClick={() => reachMetrikaGoal("content_period_open", { source: "apartment_tools" })}><small>Сначала</small><strong>Определить срок владения</strong><p>Для наследства, приватизации, единственного жилья и других оснований.</p><b>Перейти к разбору →</b></a>
+          <a href="/calc" onClick={() => reachMetrikaGoal("content_calc_open", { source: "apartment_tools" })}><small>Если налог возможен</small><strong>Рассчитать налог и экономию</strong><p>Наглядный пример с подтверждёнными расходами на отделку.</p><b>Открыть калькулятор →</b></a>
         </div>
       </section>
 
@@ -53,7 +53,7 @@ export default function ApartmentSalePage() {
 
       <section className="apartment-final">
         <div><span>Не уверены в результате?</span><h2>Начните с бесплатной первичной диагностики</h2><p>Вы получите предварительный обзор того, что важно проверить. Если потребуется персональный вывод или расчёт, сайт предложит подходящий формат консультации.</p></div>
-        <Link href="/?situation=prodazha-kvartiry#diagnostic" onClick={() => reachMetrikaGoal("content_to_consultation", { source: "apartment_landing", destination: "diagnostic_bottom" })}>Проверить ситуацию бесплатно →</Link>
+        <a href="/?situation=prodazha-kvartiry#diagnostic" onClick={() => reachMetrikaGoal("content_to_consultation", { source: "apartment_landing", destination: "diagnostic_bottom" })}>Проверить ситуацию бесплатно →</a>
       </section>
 
       <section className="apartment-sources"><b>Официальные материалы ФНС России</b><a href="https://www.nalog.gov.ru/rn77/fl/interest/tax_deduction/fl_prned/" target="_blank" rel="noreferrer">Продажа недвижимости: сроки владения и кадастровая стоимость →</a><a href="https://www.nalog.gov.ru/rn77/taxation/taxes/ndfl/nalog_vichet/im_nv/im_nv_pri/" target="_blank" rel="noreferrer">Имущественный вычет при продаже имущества →</a></section>

@@ -83,7 +83,7 @@ export default function CalculatorPage() {
           <h2 id="example-heading">Квартира от застройщика без отделки</h2>
           <h3>Проверьте возможную экономию</h3>
           <p>Введите три суммы и ответьте на два важных вопроса. Остальные обстоятельства после заказа проверит консультант.</p>
-          <p className="related-inline-note">Если вы ещё не определили, истёк ли минимальный срок владения, <Link href="/srok-vladeniya" onClick={() => reachMetrikaGoal("content_period_open", { source: "calculator" })}>сначала проверьте срок — возможно, налог вообще не возникает →</Link></p>
+          <p className="related-inline-note">Если вы ещё не определили, истёк ли минимальный срок владения, <a href="/srok-vladeniya" onClick={() => reachMetrikaGoal("content_period_open", { source: "calculator" })}>сначала проверьте срок — возможно, налог вообще не возникает →</a></p>
         </header>
         <div className="simple-calc-card">
           <div className="simple-calc-inputs">

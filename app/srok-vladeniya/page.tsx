@@ -92,7 +92,7 @@ export default function OwnershipPeriodPage() {
 
       <aside className="period-calculator-link" aria-labelledby="period-calculator-heading">
         <div><span>Если срок ещё не истёк</span><h2 id="period-calculator-heading">Предварительно рассчитайте налог и возможную экономию</h2><p>Калькулятор покажет, как подтверждённые расходы на отделку могут повлиять на НДФЛ при продаже квартиры.</p></div>
-        <Link href="/calc" onClick={() => reachMetrikaGoal("content_calc_open", { source: "ownership_period" })}>Открыть калькулятор →</Link>
+        <a href="/calc" onClick={() => reachMetrikaGoal("content_calc_open", { source: "ownership_period" })}>Открыть калькулятор →</a>
       </aside>
 
       <section className="savings-offer">
