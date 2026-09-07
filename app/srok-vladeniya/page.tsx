@@ -82,11 +82,6 @@ export default function OwnershipPeriodPage() {
           <aside><b>Эксперт проверит</b><ul><li>основание приобретения квартиры;</li><li>юридически значимую дату начала владения;</li><li>срок 3 или 5 лет;</li><li>жильё и доли, принадлежащие супругам;</li><li>исключение для нового жилья, купленного за 90 дней.</li></ul></aside>
         </div>
 
-        <div className="period-sources">
-          <b>Проверить правила на сайте ФНС России</b>
-          <a href="https://www.nalog.gov.ru/rn60/taxation/taxes/ndfl/13690090/" target="_blank" rel="noreferrer">Срок 3 или 5 лет и единственное жильё →</a>
-          <a href="https://www.nalog.gov.ru/rn70/news/international_activities/12068964/" target="_blank" rel="noreferrer">Как определяется дата при приватизации →</a>
-        </div>
         <p className="savings-caveat period-caveat">Результат зависит от вида объекта, даты и основания приобретения, состава собственности супругов и других обстоятельств. Вывод «налог 0 ₽» можно делать только после проверки документов.</p>
       </section>
 

@@ -138,6 +138,24 @@ test("renders the ownership-period landing page with qualified legal claims", as
   assert.match(html, /Налог может оказаться равен 0 ₽/);
   assert.match(html, /только после проверки документов/);
   assert.doesNotMatch(html, /Предварительно рассчитайте налог и возможную экономию/);
+  assert.doesNotMatch(html, /Проверить правила на сайте ФНС России/);
+});
+
+test("keeps the ownership-period heading inside desktop and mobile layouts", async () => {
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(css, /\.period-hero \.savings-hero-copy\{min-width:0\}/);
+  assert.match(css, /\.period-hero h1 em\{display:block;font-size:\.78em/);
+  assert.match(css, /@media\(max-width:560px\)[\s\S]*\.period-hero h1 em\{font-size:\.74em/);
+});
+
+test("does not send visitors from public content to the FNS website", async () => {
+  const pages = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/calc/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/srok-vladeniya/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/prodazha-kvartiry/page.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.doesNotMatch(pages.join("\n"), /href="https:\/\/www\.nalog\.gov\.ru/);
 });
 
 test("connects the apartment-sale hub to the diagnostic and both thematic tools", async () => {
