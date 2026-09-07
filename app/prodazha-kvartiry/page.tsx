@@ -9,13 +9,13 @@ export default function ApartmentSalePage() {
     <main className="calc-page apartment-page">
       <nav className="calc-nav">
         <Link className="brand" href="/" aria-label="НДФЛ.просто — на главную"><span className="brand-mark">₽</span><span>НДФЛ<span className="brand-dot">.просто</span></span></Link>
-        <Link className="calc-back" href="/#top">← На главную</Link>
+        <button className="calc-back" type="button" onClick={() => window.location.assign("/#top")}>← На главную</button>
       </nav>
 
       <header className="apartment-hero">
         <div>
           <span className="savings-kicker">НДФЛ при продаже квартиры</span>
-          <h1>Продали квартиру? <em>Сначала проверьте обстоятельства</em></h1>
+          <h1>Продали квартиру? <em>Проверьте обстоятельства</em></h1>
           <p>Цена продажи — не единственное, от чего зависит налог. Важны срок и основание владения, кадастровая стоимость, подтверждённые расходы, право на вычет и порядок декларирования.</p>
           <div className="apartment-hero-actions">
             <a href="#sale-routes">Что проверить <span>↓</span></a>
@@ -47,8 +47,6 @@ export default function ApartmentSalePage() {
         <div><span>Не уверены в результате?</span><h2>Начните с бесплатной первичной диагностики</h2><p>Вы получите предварительный обзор того, что важно проверить. Если потребуется персональный вывод или расчёт, сайт предложит подходящий формат консультации.</p></div>
         <button type="button" onClick={() => { reachMetrikaGoal("content_to_consultation", { source: "apartment_landing", destination: "diagnostic_bottom" }); window.location.assign("/?situation=prodazha-kvartiry#diagnostic"); }}>Проверить ситуацию бесплатно →</button>
       </section>
-
-      <section className="apartment-sources"><b>Официальные материалы ФНС России</b><a href="https://www.nalog.gov.ru/rn77/fl/interest/tax_deduction/fl_prned/" target="_blank" rel="noreferrer">Продажа недвижимости: сроки владения и кадастровая стоимость →</a><a href="https://www.nalog.gov.ru/rn77/taxation/taxes/ndfl/nalog_vichet/im_nv/im_nv_pri/" target="_blank" rel="noreferrer">Имущественный вычет при продаже имущества →</a></section>
 
       <footer className="calc-footer"><p>Материалы страницы носят предварительный характер. Итог зависит от документов и обстоятельств конкретной сделки.</p><LegalFooterLinks /></footer>
     </main>

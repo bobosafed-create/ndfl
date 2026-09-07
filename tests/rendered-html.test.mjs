@@ -145,7 +145,8 @@ test("connects the apartment-sale hub to the diagnostic and both thematic tools"
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /<title>НДФЛ при продаже квартиры/);
-  assert.match(html, /Продали квартиру/);
+  assert.match(html, /Продали квартиру[\s\S]*Проверьте обстоятельства/);
+  assert.doesNotMatch(html, /Сначала проверьте обстоятельства/);
   assert.match(html, /Четыре ключевые проверки/);
   assert.match(html, /Минимальный срок владения/);
   assert.match(html, /Доход для расчёта/);
@@ -157,7 +158,8 @@ test("connects the apartment-sale hub to the diagnostic and both thematic tools"
   assert.match(html, /href="\/srok-vladeniya"/);
   assert.match(html, /href="\/calc"/);
   assert.match(html, /Пройти бесплатную диагностику/);
-  assert.match(html, /Официальные материалы ФНС России/);
+  assert.doesNotMatch(html, /Официальные материалы ФНС России/);
+  assert.doesNotMatch(html, /Продажа недвижимости: сроки владения и кадастровая стоимость/);
   assert.match(html, /"@type":"WebPage"/);
   assert.match(html, /prodazha-kvartiry#webpage/);
 });
@@ -175,8 +177,10 @@ test("uses full-page navigation for thematic links on Timeweb", async () => {
 });
 
 test("landing-page back buttons force a reliable return to the home page", async () => {
+  const apartmentPage = await readFile(new URL("../app/prodazha-kvartiry/page.tsx", import.meta.url), "utf8");
   const calculatorPage = await readFile(new URL("../app/calc/page.tsx", import.meta.url), "utf8");
   const ownershipPage = await readFile(new URL("../app/srok-vladeniya/page.tsx", import.meta.url), "utf8");
+  assert.match(apartmentPage, /window\.location\.assign\("\/#top"\)/);
   assert.match(calculatorPage, /window\.location\.assign\("\/#top"\)/);
   assert.match(ownershipPage, /window\.location\.assign\("\/#top"\)/);
 });
