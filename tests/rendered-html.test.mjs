@@ -164,6 +164,12 @@ test("connects the apartment-sale hub to the diagnostic and both thematic tools"
   assert.match(html, /prodazha-kvartiry#webpage/);
 });
 
+test("keeps the apartment-sale heading inside desktop and mobile layouts", async () => {
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(css, /\.apartment-hero h1 em\{display:block;font-size:\.78em/);
+  assert.match(css, /@media\(max-width:600px\)[\s\S]*\.apartment-hero h1 em\{font-size:\.72em/);
+});
+
 test("uses full-page navigation for thematic links on Timeweb", async () => {
   const apartmentPage = await readFile(new URL("../app/prodazha-kvartiry/page.tsx", import.meta.url), "utf8");
   const calculatorPage = await readFile(new URL("../app/calc/page.tsx", import.meta.url), "utf8");
