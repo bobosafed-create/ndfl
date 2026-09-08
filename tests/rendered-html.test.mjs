@@ -30,14 +30,31 @@ test("server-renders the consultation landing page", async () => {
 
   const html = await response.text();
   assert.match(html, /<title>Проверьте свой НДФЛ/i);
+  assert.match(html, /<meta name="yandex-verification" content="f621b7b1fac1315f"/i);
+  assert.match(html, /<link rel="canonical" href="https:\/\/ndfl-prosto\.ru\/?"/i);
+  assert.match(html, /type="application\/ld\+json"/i);
+  assert.match(html, /"@type":"WebSite"/);
+  assert.match(html, /"@type":"ProfessionalService"/);
+  assert.match(html, /"@type":"Service"/);
+  assert.doesNotMatch(html, /AggregateRating|ratingValue/);
   assert.match(html, /Проверьте свой/);
   assert.match(html, /Выберите свою ситуацию/);
   assert.match(html, /Не уверены, что вам вообще нужна консультация/);
   assert.match(html, /Ответ проверяет специалист/);
   assert.match(html, /Проверенный налоговым специалистом письменный ответ в срок выбранного тарифа/);
-  assert.match(html, /Выберите глубину разбора/);
+  assert.match(html, /Выберите формат работы/);
+  assert.match(html, /Получить письменный ответ/);
+  assert.match(html, /ОПЛАТИТЬ/);
   assert.match(html, /Проверка ситуации/);
   assert.match(html, /Расчёт и подробный разбор/);
+  assert.match(html, /Подходит, если требуется/);
+  assert.match(html, /один объект или одну операцию/);
+  assert.match(html, /без сравнения нескольких вариантов и сложного расчёта/);
+  assert.match(html, /Назначается, если требуется хотя бы одно/);
+  assert.match(html, /точный расчёт налога или возврата/);
+  assert.match(html, /несколько сделок, объектов или лет/);
+  assert.match(html, /сальдирование убытков/);
+  assert.match(html, /подробное нормативное обоснование/);
   assert.match(html, /Срочно/);
   assert.match(html, /Как обстоятельства меняют результат/);
   assert.doesNotMatch(html, /Входит ли в консультацию дополнительный уточняющий вопрос/);
@@ -51,9 +68,43 @@ test("server-renders the consultation landing page", async () => {
   assert.match(html, /Пользователь может оставаться анонимным/);
   assert.match(html, /Персональный анализ/);
   assert.match(html, /Как это работает/);
+  assert.match(html, /Этапы получения консультации/);
+  assert.match(html, /Выберите формат/);
+  assert.match(html, /Оплатите консультацию/);
+  assert.match(html, /Сохраните код/);
+  assert.match(html, /Сейф откроется сразу после ответа специалиста/);
+  assert.doesNotMatch(html, /class="steps-grid"|class="flow-progress"/);
   assert.match(html, /Не уверены в расчёте НДФЛ/);
   assert.doesNotMatch(html, /Опубликованных отзывов пока нет/);
   assert.doesNotMatch(html, /codex-preview|Building your site/);
+});
+
+test("publishes crawler rules and a sitemap containing only public pages", async () => {
+  const robots = await readFile(new URL("../public/robots.txt", import.meta.url), "utf8");
+  const sitemap = await readFile(new URL("../public/sitemap.xml", import.meta.url), "utf8");
+  assert.match(robots, /User-agent: \*/);
+  assert.match(robots, /Disallow: \/api\//);
+  assert.match(robots, /Disallow: \/consultant\//);
+  assert.match(robots, /Sitemap: https:\/\/ndfl-prosto\.ru\/sitemap\.xml/);
+  assert.match(sitemap, /https:\/\/ndfl-prosto\.ru\//);
+  assert.match(sitemap, /https:\/\/ndfl-prosto\.ru\/prodazha-kvartiry/);
+  assert.match(sitemap, /https:\/\/ndfl-prosto\.ru\/calc/);
+  assert.match(sitemap, /https:\/\/ndfl-prosto\.ru\/srok-vladeniya/);
+  assert.match(sitemap, /https:\/\/ndfl-prosto\.ru\/legal/);
+  assert.doesNotMatch(sitemap, /\/consultant|\/cons|\/api/);
+});
+
+test("provides a distinct free diagnostic for every situation", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /правило 70% кадастровой стоимости/);
+  assert.match(page, /уменьшение суммы продажи на стандартный вычет/);
+  assert.match(page, /распределение вычета в браке/);
+  assert.match(page, /код услуги в справке/);
+  assert.match(page, /упрощённый порядок получения вычета/);
+  assert.match(page, /суммарный доход по всем банкам/);
+  assert.match(page, /статус арендатора как налогового агента/);
+  assert.match(page, /сальдирование убытков/);
+  assert.doesNotMatch(page, /важны даты, суммы, документы и обстоятельства получения дохода или права на вычет/);
 });
 
 test("renders the preliminary apartment-sale tax calculator", async () => {
@@ -67,6 +118,8 @@ test("renders the preliminary apartment-sale tax calculator", async () => {
   assert.match(html, /Проверьте возможную экономию/);
   assert.match(html, /подп\. 4 и 5 п\. 3 статьи 220 НК РФ/);
   assert.match(html, /Не всякий ремонт или покупка для интерьера признаются отделкой/);
+  assert.match(html, /сначала проверьте срок/);
+  assert.match(html, /href="\/srok-vladeniya"/);
   assert.doesNotMatch(html, /Покупка — 5 млн ₽/);
   assert.doesNotMatch(html, /130 000 ₽ налога|115 050 ₽ налога|Экономия — 14 950 ₽/);
   assert.doesNotMatch(html, /Кадастровая стоимость на 1 января|Региональный коэффициент/);
@@ -76,18 +129,82 @@ test("renders the ownership-period landing page with qualified legal claims", as
   const response = await render("/srok-vladeniya");
   assert.equal(response.status, 200);
   const html = await response.text();
-  assert.match(html, /не выдержали/);
+  assert.match(html, /правильно определили/);
+  assert.match(html, /Сначала проверьте точку отсчёта/);
   assert.match(html, /Срок начинается со дня смерти наследодателя/);
   assert.match(html, /Для приватизации до 1 февраля 1998 года/);
   assert.match(html, /Минимальный срок — 3 года/);
   assert.match(html, /Новое жильё, купленное не более чем за 90 дней/);
   assert.match(html, /Налог может оказаться равен 0 ₽/);
   assert.match(html, /только после проверки документов/);
+  assert.doesNotMatch(html, /Предварительно рассчитайте налог и возможную экономию/);
+  assert.doesNotMatch(html, /Проверить правила на сайте ФНС России/);
+});
+
+test("keeps the ownership-period heading inside desktop and mobile layouts", async () => {
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(css, /\.period-hero \.savings-hero-copy\{min-width:0\}/);
+  assert.match(css, /\.period-hero h1 em\{display:block;font-size:\.78em/);
+  assert.match(css, /@media\(max-width:560px\)[\s\S]*\.period-hero h1 em\{font-size:\.74em/);
+});
+
+test("does not send visitors from public content to the FNS website", async () => {
+  const pages = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/calc/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/srok-vladeniya/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/prodazha-kvartiry/page.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.doesNotMatch(pages.join("\n"), /href="https:\/\/www\.nalog\.gov\.ru/);
+});
+
+test("connects the apartment-sale hub to the diagnostic and both thematic tools", async () => {
+  const response = await render("/prodazha-kvartiry");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /<title>НДФЛ при продаже квартиры/);
+  assert.match(html, /Продали квартиру[\s\S]*Проверьте обстоятельства/);
+  assert.doesNotMatch(html, /Сначала проверьте обстоятельства/);
+  assert.match(html, /Четыре ключевые проверки/);
+  assert.match(html, /Минимальный срок владения/);
+  assert.match(html, /Доход для расчёта/);
+  assert.match(html, /Расходы на отделку квартиры/);
+  assert.match(html, /3-НДФЛ и сроки/);
+  assert.match(html, /За счёт чего уменьшить налогооблагаемую базу/);
+  assert.doesNotMatch(html, /Рекомендация консультанта/);
+  assert.doesNotMatch(html, /Если срок владения не истёк, проверьте способы уменьшить доход от продажи/);
+  assert.match(html, /href="\/srok-vladeniya"/);
+  assert.match(html, /href="\/calc"/);
+  assert.match(html, /Пройти бесплатную диагностику/);
+  assert.doesNotMatch(html, /Официальные материалы ФНС России/);
+  assert.doesNotMatch(html, /Продажа недвижимости: сроки владения и кадастровая стоимость/);
+  assert.match(html, /"@type":"WebPage"/);
+  assert.match(html, /prodazha-kvartiry#webpage/);
+});
+
+test("keeps the apartment-sale heading inside desktop and mobile layouts", async () => {
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(css, /\.apartment-hero h1 em\{display:block;font-size:\.78em/);
+  assert.match(css, /@media\(max-width:600px\)[\s\S]*\.apartment-hero h1 em\{font-size:\.72em/);
+});
+
+test("uses full-page navigation for thematic links on Timeweb", async () => {
+  const apartmentPage = await readFile(new URL("../app/prodazha-kvartiry/page.tsx", import.meta.url), "utf8");
+  const calculatorPage = await readFile(new URL("../app/calc/page.tsx", import.meta.url), "utf8");
+  const ownershipPage = await readFile(new URL("../app/srok-vladeniya/page.tsx", import.meta.url), "utf8");
+  assert.match(apartmentPage, /<a href="\/srok-vladeniya"/);
+  assert.match(apartmentPage, /<a href="\/calc"/);
+  assert.doesNotMatch(apartmentPage, /<Link href="\/(?:srok-vladeniya|calc)"/);
+  assert.match(apartmentPage, /window\.location\.assign\("\/\?situation=prodazha-kvartiry#diagnostic"\)/);
+  assert.match(calculatorPage, /<a href="\/srok-vladeniya"/);
+  assert.doesNotMatch(ownershipPage, /<a href="\/calc"/);
 });
 
 test("landing-page back buttons force a reliable return to the home page", async () => {
+  const apartmentPage = await readFile(new URL("../app/prodazha-kvartiry/page.tsx", import.meta.url), "utf8");
   const calculatorPage = await readFile(new URL("../app/calc/page.tsx", import.meta.url), "utf8");
   const ownershipPage = await readFile(new URL("../app/srok-vladeniya/page.tsx", import.meta.url), "utf8");
+  assert.match(apartmentPage, /window\.location\.assign\("\/#top"\)/);
   assert.match(calculatorPage, /window\.location\.assign\("\/#top"\)/);
   assert.match(ownershipPage, /window\.location\.assign\("\/#top"\)/);
 });
@@ -107,8 +224,12 @@ test("keeps consultation codes four digits and uses the protected payment flow",
   assert.match(page, /\/api\/payments\/create/);
   assert.match(page, /Защищённая оплата через ЮKassa/);
   assert.match(page, /ndfl-active-consultation/);
+  assert.match(page, /window\.history\.replaceState\(\{\}, "", `\$\{window\.location\.pathname\}#consultation-room`\)/);
+  assert.match(page, /getElementById\("consultation-room"\)\?\.scrollIntoView/);
   assert.doesNotMatch(page, /Демонстрационный платёж/);
   assert.match(page, /окошко закроется через/);
+  assert.match(page, /setCodeNoticeSeconds\(60\)/);
+  assert.match(page, /Код записан — закрыть/);
   assert.match(page, /paginateAnswer/);
   assert.match(page, /answer-carousel/);
   assert.match(page, /Страница <b>/);
@@ -126,8 +247,12 @@ test("keeps consultation codes four digits and uses the protected payment flow",
   assert.match(page, /Посмотрите расписание на сайте\. Приносим извинения за неудобства\./);
   assert.match(page, /isServiceOpen\(serviceSchedule\)/);
   assert.match(page, /questions_unavailable/);
-  assert.match(page, /<span>НАЧАТЬ<\/span><strong>\{priceLabel\}<\/strong>/);
-  assert.match(page, /body: JSON\.stringify\(\{ tariffCode: selectedTariffCode, urgent: urgentSelected \}\)/);
+  assert.match(page, /<span>ОПЛАТИТЬ<\/span><strong>\{priceLabel\}<\/strong>/);
+  assert.match(page, /tariffAssessment: \{ confirmed: tariffAssessmentCompleted, flags: tariffAssessmentFlags \}/);
+  assert.match(page, /Подберём минимально подходящий тариф/);
+  assert.match(page, /Ничего из перечисленного не требуется/);
+  assert.match(page, /Не подходит по ответам/);
+  assert.match(page, /requiresDetailedTariff && selectedTariffCode !== "detailed-review"/);
   assert.match(page, /ndfl-calculator-tariff/);
   assert.match(page, /setSelectedTariffCode\("situation-check"\)/);
   assert.match(page, /Выключите VPN, если он включён/);
@@ -135,9 +260,19 @@ test("keeps consultation codes four digits and uses the protected payment flow",
   assert.match(page, /Скачать ответ/);
   assert.match(page, /Печать \/ PDF/);
   assert.doesNotMatch(page, /Опубликованных отзывов пока нет/);
-  assert.match(page, /data-future-path/);
+  assert.match(page, /Подробнее о продаже квартиры/);
+  assert.match(page, /Полезные инструменты до консультации/);
+  assert.match(page, /new URLSearchParams\(window\.location\.search\)\.get\("situation"\)/);
+  assert.doesNotMatch(page, /а позже сможет вести на отдельную тематическую страницу/);
   assert.match(page, /\/api\/visits/);
   assert.match(page, /\/api\/consultant\/visitor-stats/);
+  assert.match(page, /stage === "payment" \? 4000 : 10000/);
+  assert.match(page, /document\.addEventListener\("visibilitychange", checkVisibleStatus\)/);
+  assert.match(page, /ОТВЕТ ПОЛУЧЕН/);
+  assert.match(page, /Введите код от сейфа/);
+  assert.match(page, /Оставить тариф 390 ₽/);
+  assert.match(page, /Доплатить 600 ₽/);
+  assert.match(page, /\/api\/consultations\/upgrade/);
 });
 
 test("sets the selected tariff deadline when the visitor saves a question", async () => {
@@ -149,28 +284,45 @@ test("sets the selected tariff deadline when the visitor saves a question", asyn
 });
 
 test("legal documents describe the anonymous mode without hiding technical processing", async () => {
-  const legal = await readFile(new URL("../app/legal/page.tsx", import.meta.url), "utf8");
+  const legal = await readFile(new URL("../app/legal/LegalDocumentsClient.tsx", import.meta.url), "utf8");
+  const defaults = await readFile(new URL("../lib/legal-documents.mjs", import.meta.url), "utf8");
   assert.match(legal, /<a className="cabinet-back" href="\/#room" aria-label="Вернуться на сайт">/);
   assert.doesNotMatch(legal, /next\/link/);
-  assert.match(legal, /не идентифицирует и не персонализирует Посетителя/);
-  assert.match(legal, /Функция загрузки файлов и документов отключена/);
-  assert.match(legal, /не означает полного отсутствия технической обработки/);
-  assert.match(legal, /IP-адрес и время запросов/);
-  assert.match(legal, /Проверка ситуации/);
-  assert.match(legal, /Расчёт и подробный разбор/);
-  assert.match(legal, /Допопция «Срочно» стоит 300 рублей/);
-  assert.match(legal, /не ограничивает обязательные права потребителя/);
+  assert.match(defaults, /не идентифицирует и не персонализирует Посетителя/);
+  assert.match(defaults, /Функция загрузки файлов и документов отключена/);
+  assert.match(defaults, /не означает полного отсутствия технической обработки/);
+  assert.match(defaults, /IP-адрес и время запросов/);
+  assert.match(defaults, /Проверка ситуации/);
+  assert.match(defaults, /Расчёт и подробный разбор/);
+  assert.match(defaults, /Допопция «Срочно» стоит 300 рублей/);
+  assert.match(defaults, /не ограничивает обязательные права потребителя/);
+  assert.match(defaults, /добровольно доплатить 600 рублей/);
+  assert.match(defaults, /автоматический возврат первоначального платежа не производится/);
+});
+
+test("legal documents remain available as server-rendered fallback and update from the database", async () => {
+  const page = await readFile(new URL("../app/legal/page.tsx", import.meta.url), "utf8");
+  const client = await readFile(new URL("../app/legal/LegalDocumentsClient.tsx", import.meta.url), "utf8");
+  const footer = await readFile(new URL("../components/LegalFooterLinks.tsx", import.meta.url), "utf8");
+  assert.match(page, /initialDocuments=\{DEFAULT_LEGAL_DOCUMENTS\}/);
+  assert.match(client, /fetch\("\/api\/legal-documents"/);
+  assert.match(footer, /item\.showInFooter/);
+  assert.match(footer, /`\/legal#\$\{item\.slug\}`/);
 });
 
 test("renders the consultant cabinet", async () => {
   const page = await readFile(new URL("../app/consultant/page.tsx", import.meta.url), "utf8");
+  const layout = await readFile(new URL("../app/consultant/layout.tsx", import.meta.url), "utf8");
   assert.match(page, /Кабинет консультанта/);
   assert.match(page, /\/api\/consultant\/consultations/);
   assert.match(page, /Отправить в сейф/);
   assert.match(page, /type="password"/);
   assert.match(page, /Вернуться на сайт/);
   assert.match(page, /Стоимость услуг/);
-  assert.match(page, /Подготовить черновик с ИИ/);
+  assert.match(page, /Подготовить черновик в GigaChat/);
+  assert.match(page, /Подготовить детализированный черновик в GigaChat/);
+  assert.match(page, /createAiDraft\(selected\.id, "brief"\)/);
+  assert.match(page, /createAiDraft\(selected\.id, "detailed"\)/);
   assert.match(page, /Скопировать вопрос/);
   assert.match(page, /\/api\/consultant\/calculations/);
   assert.match(page, /Архив консультаций/);
@@ -180,6 +332,10 @@ test("renders the consultant cabinet", async () => {
   assert.match(page, /consultant\/attachments/);
   assert.match(page, /Тарифы фиксированы в коде сайта/);
   assert.match(page, /Тариф:/);
+  assert.match(page, /Основание выбора тарифа/);
+  assert.match(page, /selected.recoveryCode/);
+  assert.match(page, /Вопрос и ответ автоматически перенесены в архив/);
+  assert.match(page, /tariffAssessmentConfirmed/);
   assert.match(page, /Допопция «Срочно»/);
   assert.match(page, /\/api\/consultant\/settings/);
   assert.match(page, /\/api\/consultant\/pending-summary/);
@@ -196,7 +352,17 @@ test("renders the consultant cabinet", async () => {
   assert.match(page, /Сохранить расписание/);
   assert.match(page, /serviceSchedule/);
   assert.match(page, /Выберите консультацию в перечне выше/);
+  assert.match(page, /ОТВЕТ ОТПРАВЛЕН В СЕЙФ/);
+  assert.match(page, /ОТВЕТ ПОЛУЧЕН, КОНСУЛЬТАЦИЯ ЗАВЕРШЕНА/);
+  assert.match(page, /status: "archived"/);
+  assert.match(page, /"answered" \| "received"/);
+  assert.match(page, /Обновить ответ в сейфе/);
+  assert.match(page, /Требуется подробный разбор/);
+  assert.match(page, /Ожидается выбор посетителя/);
+  assert.match(page, /Доплата получена/);
+  assert.match(page, /\/api\/consultant\/request-upgrade/);
   assert.doesNotMatch(page, /Старые тестовые записи|Тестовых записей нет|не являются платежами ЮKassa/);
+  assert.match(layout, /robots: \{ index: false, follow: false, noarchive: true \}/);
 });
 
 test("provides the short consultant cabinet address", async () => {

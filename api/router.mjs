@@ -18,10 +18,18 @@ import {
 } from "../lib/ai.mjs";
 import { CONSULTATION_TARIFFS, URGENT_ADDON, resolveTariff } from "../lib/tariffs.mjs";
 import { isServiceOpen } from "../lib/service-schedule.mjs";
+import { routeLegalDocuments } from "./legal-documents.mjs";
 
 const rateLimits = new Map();
 const ANSWER_NOTICE = "Пометка консультанта: Ответ составлен по предоставленным данным. Если у вас имеются дополнительные обезличенные сведения, способные повлиять на вывод, оформите новый вопрос в том же порядке, что и первоначальный.";
 const MAX_ANSWER_LENGTH = 15000;
+const DEFAULT_BODY_LIMIT_BYTES = 16_384;
+const ANSWER_BODY_LIMIT_BYTES = 65_536;
+const UPGRADE_AMOUNT_KOPECKS = CONSULTATION_TARIFFS[1].amountKopecks - CONSULTATION_TARIFFS[0].amountKopecks;
+const TARIFF_ASSESSMENT_FLAGS = new Set([
+  "exact-calculation", "multiple-items", "compare-options", "spouses", "investments",
+  "loss-offset", "tax-notice", "legal-detail", "multiple-questions",
+]);
 const SCHEDULE_DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 const DEFAULT_SERVICE_SCHEDULE = SCHEDULE_DAYS.map((day, index) => ({
   day,
@@ -91,17 +99,23 @@ function allowRequest(scope, request, limit = 12, windowMs = 60_000) {
   return current.count <= limit;
 }
 
-async function body(request) {
+async function body(request, maxBytes = DEFAULT_BODY_LIMIT_BYTES) {
   const length = Number(request.headers.get("content-length") ?? 0);
-  if (length > 16_384) throw new Error("body_too_large");
+  if (length > maxBytes) throw new Error("body_too_large");
   const text = await request.text();
-  if (Buffer.byteLength(text, "utf8") > 16_384) throw new Error("body_too_large");
+  if (Buffer.byteLength(text, "utf8") > maxBytes) throw new Error("body_too_large");
   if (!text.trim()) return {};
   return JSON.parse(text);
 }
 
 function validUuid(value) {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function normalizeTariffAssessment(value) {
+  if (!value || value.confirmed !== true || !Array.isArray(value.flags) || value.flags.length > TARIFF_ASSESSMENT_FLAGS.size) return null;
+  if (value.flags.some((flag) => typeof flag !== "string" || !TARIFF_ASSESSMENT_FLAGS.has(flag))) return null;
+  return [...new Set(value.flags)];
 }
 
 function browserTokenHash(consultationId, token) {
@@ -271,10 +285,13 @@ async function createPayment(request) {
   const idempotencyKey = randomUUID();
   const browserToken = randomToken();
   const code = String(randomInt(1000, 10000));
+  const recoveryCode = encryptMessage(consultationId, "recovery_code", code);
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   const defaultAmountKopecks = priceResult.rows[0]?.consultation_price_kopecks ?? 10000;
   const requestedTariffCode = typeof input.tariffCode === "string" ? input.tariffCode.trim() : "";
   const requestedUrgent = input.urgent === true;
+  const tariffAssessment = normalizeTariffAssessment(input.tariffAssessment);
+  if (!tariffAssessment) return json({ error: "tariff_assessment_required" }, 400);
   if (input.urgent !== undefined && typeof input.urgent !== "boolean") {
     return json({ error: "invalid_urgent_option" }, 400);
   }
@@ -284,6 +301,9 @@ async function createPayment(request) {
   if (requestedUrgent && priceResult.rows[0]?.urgent_tariff_available === false) {
     return json({ error: "urgent_tariff_unavailable" }, 409);
   }
+  if (tariffAssessment.length > 0 && requestedTariffCode !== "detailed-review") {
+    return json({ error: "detailed_tariff_required" }, 409);
+  }
   const tariff = resolveTariff(requestedTariffCode, defaultAmountKopecks, requestedUrgent);
   const amountKopecks = tariff.amountKopecks;
 
@@ -292,8 +312,8 @@ async function createPayment(request) {
     await client.query("BEGIN");
     await client.query(
       `INSERT INTO consultations
-        (id, code_hash, browser_token_hash, expires_at, tariff_code, tariff_name, tariff_amount_kopecks, tariff_deadline_minutes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        (id, code_hash, browser_token_hash, expires_at, tariff_code, tariff_name, tariff_amount_kopecks, tariff_deadline_minutes, tariff_assessment, tariff_assessment_confirmed, recovery_code_ciphertext, recovery_code_iv, recovery_code_tag)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, true, $10, $11, $12)`,
       [
         consultationId,
         codeHash(consultationId, code),
@@ -303,6 +323,10 @@ async function createPayment(request) {
         tariff.name,
         tariff.amountKopecks,
         tariff.deadlineMinutes,
+        JSON.stringify(tariffAssessment),
+        recoveryCode.ciphertext,
+        recoveryCode.iv,
+        recoveryCode.authenticationTag,
       ],
     );
     await client.query(
@@ -326,9 +350,9 @@ async function createPayment(request) {
       throw new Error("invalid_yookassa_response");
     }
     await database.query(
-      `UPDATE payments SET provider_payment_id = $1, status = $2, updated_at = now()
-       WHERE id = $3`,
-      [payment.id, payment.status ?? "pending", paymentId],
+      `UPDATE payments SET provider_payment_id = $1, status = $2, confirmation_url = $3, updated_at = now()
+       WHERE id = $4`,
+      [payment.id, payment.status ?? "pending", confirmationUrl, paymentId],
     );
     return json({ consultationId, browserToken, code, confirmationUrl, amountKopecks, tariff }, 201);
   } catch (error) {
@@ -357,7 +381,8 @@ async function synchronizePayment(database, consultationId) {
   const result = await database.query(
     `SELECT p.provider_payment_id, p.status, p.amount_kopecks, c.tariff_code
      FROM payments p JOIN consultations c ON c.id = p.consultation_id
-     WHERE p.consultation_id = $1 ORDER BY p.created_at DESC LIMIT 1`,
+     WHERE p.consultation_id = $1 AND p.purpose = 'consultation'
+     ORDER BY p.created_at DESC LIMIT 1`,
     [consultationId],
   );
   const localPayment = result.rows[0];
@@ -395,6 +420,126 @@ async function synchronizePayment(database, consultationId) {
   return { ...localPayment, status: remoteStatus };
 }
 
+async function completeTariffUpgrade(database, consultationId) {
+  await database.query(
+    `UPDATE consultations
+     SET tariff_code = CASE WHEN tariff_code LIKE '%-urgent' THEN 'detailed-review-urgent' ELSE 'detailed-review' END,
+         tariff_name = CASE WHEN tariff_code LIKE '%-urgent' THEN 'Расчёт и подробный разбор · Срочно' ELSE 'Расчёт и подробный разбор' END,
+         tariff_amount_kopecks = tariff_amount_kopecks + $2,
+         tariff_deadline_minutes = CASE WHEN tariff_code LIKE '%-urgent' THEN 120 ELSE 480 END,
+         answer_due_at = now() + CASE WHEN tariff_code LIKE '%-urgent' THEN interval '2 hours' ELSE interval '8 hours' END,
+         upgrade_status = 'completed', upgrade_completed_at = now(), updated_at = now()
+     WHERE id = $1 AND tariff_code LIKE 'situation-check%' AND upgrade_status = 'awaiting_payment'`,
+    [consultationId, UPGRADE_AMOUNT_KOPECKS],
+  );
+}
+
+async function synchronizeUpgradePayment(database, consultationId) {
+  const result = await database.query(
+    `SELECT provider_payment_id, status, amount_kopecks, confirmation_url
+     FROM payments
+     WHERE consultation_id = $1 AND purpose = 'tariff_upgrade'
+     ORDER BY created_at DESC LIMIT 1`,
+    [consultationId],
+  );
+  const localPayment = result.rows[0];
+  if (!localPayment?.provider_payment_id) return localPayment ?? null;
+  if (localPayment.status === "succeeded") {
+    await completeTariffUpgrade(database, consultationId);
+    return localPayment;
+  }
+
+  const remotePayment = await getYooKassaPayment(localPayment.provider_payment_id);
+  if (remotePayment?.metadata?.consultation_id !== consultationId || remotePayment?.metadata?.payment_purpose !== "tariff_upgrade") return null;
+  const remoteAmountKopecks = Math.round(Number(remotePayment?.amount?.value) * 100);
+  if (remoteAmountKopecks !== UPGRADE_AMOUNT_KOPECKS || remoteAmountKopecks !== localPayment.amount_kopecks) return null;
+  const remoteStatus = remotePayment.status;
+  if (!["pending", "waiting_for_capture", "succeeded", "cancelled"].includes(remoteStatus)) return null;
+  await database.query(
+    "UPDATE payments SET status = $1, updated_at = now() WHERE provider_payment_id = $2",
+    [remoteStatus, localPayment.provider_payment_id],
+  );
+  if (remoteStatus === "succeeded") await completeTariffUpgrade(database, consultationId);
+  if (remoteStatus === "cancelled") {
+    await database.query(
+      "UPDATE consultations SET upgrade_status = 'requested', updated_at = now() WHERE id = $1 AND upgrade_status = 'awaiting_payment'",
+      [consultationId],
+    );
+  }
+  return { ...localPayment, status: remoteStatus };
+}
+
+async function consultationUpgradeDecision(request) {
+  if (!allowRequest("tariff-upgrade", request, 8, 10 * 60_000)) return json({ error: "too_many_requests" }, 429);
+  const input = await body(request);
+  if (!validUuid(input.consultationId) || !["decline", "pay"].includes(input.decision)) return json({ error: "invalid_upgrade_decision" }, 400);
+  const database = getDatabasePool();
+  let consultation = await authenticateConsultation(database, input.consultationId, input.browserToken);
+  if (!consultation) return json({ error: "not_found" }, 404);
+  if (consultation.status !== "question_submitted" || !consultation.tariff_code?.startsWith("situation-check")) {
+    return json({ error: "upgrade_not_available" }, 409);
+  }
+
+  if (input.decision === "decline") {
+    const result = await database.query(
+      `UPDATE consultations SET upgrade_status = 'declined', updated_at = now()
+       WHERE id = $1 AND upgrade_status = 'requested' RETURNING id`,
+      [consultation.id],
+    );
+    if (!result.rows[0]) return json({ error: "upgrade_not_available" }, 409);
+    return json({ upgradeStatus: "declined" });
+  }
+
+  if (!["requested", "awaiting_payment"].includes(consultation.upgrade_status)) return json({ error: "upgrade_not_available" }, 409);
+  if (consultation.upgrade_status === "awaiting_payment") {
+    await synchronizeUpgradePayment(database, consultation.id).catch(() => null);
+    consultation = await authenticateConsultation(database, input.consultationId, input.browserToken);
+    if (consultation.upgrade_status === "completed") return json({ upgradeStatus: "completed" });
+    const pending = await database.query(
+      `SELECT confirmation_url FROM payments
+       WHERE consultation_id = $1 AND purpose = 'tariff_upgrade' AND status IN ('pending', 'waiting_for_capture')
+       ORDER BY created_at DESC LIMIT 1`,
+      [consultation.id],
+    );
+    if (pending.rows[0]?.confirmation_url) return json({ upgradeStatus: "awaiting_payment", confirmationUrl: pending.rows[0].confirmation_url });
+  }
+
+  const claim = await database.query(
+    `UPDATE consultations SET upgrade_status = 'awaiting_payment', updated_at = now()
+     WHERE id = $1 AND upgrade_status = 'requested' RETURNING id`,
+    [consultation.id],
+  );
+  if (!claim.rows[0]) return json({ error: "upgrade_not_available" }, 409);
+  const paymentId = randomUUID();
+  const idempotencyKey = randomUUID();
+  const upgradeTariff = {
+    code: "detailed-review-upgrade",
+    name: "Доплата до тарифа «Расчёт и подробный разбор»",
+    amountKopecks: UPGRADE_AMOUNT_KOPECKS,
+    deadlineMinutes: consultation.tariff_code.endsWith("-urgent") ? 120 : 480,
+  };
+  try {
+    await database.query(
+      `INSERT INTO payments (id, consultation_id, idempotency_key, amount_kopecks, purpose)
+       VALUES ($1, $2, $3, $4, 'tariff_upgrade')`,
+      [paymentId, consultation.id, idempotencyKey, UPGRADE_AMOUNT_KOPECKS],
+    );
+    const payment = await createYooKassaPayment({ consultationId: consultation.id, idempotencyKey, amountKopecks: UPGRADE_AMOUNT_KOPECKS, tariff: upgradeTariff, purpose: "tariff_upgrade" });
+    const confirmationUrl = payment?.confirmation?.confirmation_url;
+    if (!payment?.id || !confirmationUrl || !confirmationUrl.startsWith("https://")) throw new Error("invalid_yookassa_response");
+    await database.query(
+      `UPDATE payments SET provider_payment_id = $1, status = $2, confirmation_url = $3, updated_at = now() WHERE id = $4`,
+      [payment.id, payment.status ?? "pending", confirmationUrl, paymentId],
+    );
+    return json({ upgradeStatus: "awaiting_payment", confirmationUrl, amountKopecks: UPGRADE_AMOUNT_KOPECKS }, 201);
+  } catch (error) {
+    await database.query("UPDATE payments SET status = 'cancelled', updated_at = now() WHERE id = $1", [paymentId]);
+    await database.query("UPDATE consultations SET upgrade_status = 'requested', updated_at = now() WHERE id = $1", [consultation.id]);
+    const status = error?.status === 401 ? 503 : 502;
+    return json({ error: "payment_provider_unavailable" }, status);
+  }
+}
+
 async function consultationStatus(request) {
   if (!allowRequest("status", request, 30)) return json({ error: "too_many_requests" }, 429);
   const input = await body(request);
@@ -409,11 +554,16 @@ async function consultationStatus(request) {
   if (consultation.status === "awaiting_payment") {
     await synchronizePayment(database, consultation.id).catch(() => null);
   }
+  if (consultation.upgrade_status === "awaiting_payment") {
+    await synchronizeUpgradePayment(database, consultation.id).catch(() => null);
+  }
   const fresh = await authenticateConsultation(database, input.consultationId, input.browserToken);
   return json({
-    status: fresh.status,
+    status: fresh.status === "archived" ? "answered" : fresh.status,
     answerDueAt: fresh.answer_due_at,
-    answerReady: fresh.status === "answered",
+    answerReady: ["answered", "archived"].includes(fresh.status),
+    upgradeStatus: fresh.upgrade_status,
+    upgradeAmountKopecks: UPGRADE_AMOUNT_KOPECKS,
     tariff: fresh.tariff_code ? {
       code: fresh.tariff_code,
       name: fresh.tariff_name,
@@ -491,7 +641,7 @@ async function openAnswer(request) {
     );
     return json({ error: "invalid_code" }, 403);
   }
-  if (consultation.status !== "answered") return json({ error: "answer_not_ready" }, 409);
+  if (!["answered", "archived"].includes(consultation.status)) return json({ error: "answer_not_ready" }, 409);
   const result = await database.query(
     `SELECT ciphertext, encryption_iv, authentication_tag
      FROM consultation_messages
@@ -502,7 +652,12 @@ async function openAnswer(request) {
   if (!result.rows[0]) return json({ error: "answer_not_ready" }, 409);
   const answer = withAnswerNotice(decryptMessage(consultation.id, "consultant", result.rows[0]));
   await database.query(
-    "UPDATE consultations SET failed_access_attempts = 0, access_locked_until = NULL, updated_at = now() WHERE id = $1",
+    `UPDATE consultations
+     SET failed_access_attempts = 0,
+         access_locked_until = NULL,
+         answer_opened_at = COALESCE(answer_opened_at, now()),
+         updated_at = now()
+     WHERE id = $1`,
     [consultation.id],
   );
   return json({ answer });
@@ -513,6 +668,23 @@ function consultantAuthorized(request) {
   return authorization.startsWith("Bearer ") && consultantKeyMatches(authorization.slice(7));
 }
 
+async function consultantRequestUpgrade(request) {
+  if (!allowRequest("consultant-upgrade", request, 20) || !consultantAuthorized(request)) return json({ error: "unauthorized" }, 401);
+  const input = await body(request);
+  if (!validUuid(input.consultationId)) return json({ error: "invalid_consultation" }, 400);
+  const database = getDatabasePool();
+  const result = await database.query(
+    `UPDATE consultations
+     SET upgrade_status = 'requested', upgrade_requested_at = now(), updated_at = now()
+     WHERE id = $1 AND status = 'question_submitted' AND tariff_code LIKE 'situation-check%'
+       AND upgrade_status IS NULL
+     RETURNING id`,
+    [input.consultationId],
+  );
+  if (!result.rows[0]) return json({ error: "upgrade_not_available" }, 409);
+  return json({ upgradeStatus: "requested" });
+}
+
 async function consultantList(request) {
   if (!allowRequest("consultant", request, 30) || !consultantAuthorized(request)) {
     return json({ error: "unauthorized" }, 401);
@@ -520,8 +692,11 @@ async function consultantList(request) {
   const view = new URL(request.url).searchParams.get("view") === "archive" ? "archive" : "active";
   const database = getDatabasePool();
   const result = await database.query(
-    `SELECT c.id, c.status, c.answer_due_at, c.created_at, c.archived_at,
+    `SELECT c.id, c.status, c.answer_due_at, c.answer_opened_at, c.created_at, c.archived_at,
+            c.recovery_code_ciphertext, c.recovery_code_iv, c.recovery_code_tag,
             c.tariff_code, c.tariff_name, c.tariff_amount_kopecks, c.tariff_deadline_minutes,
+            c.tariff_assessment, c.tariff_assessment_confirmed, c.upgrade_status,
+            c.upgrade_requested_at, c.upgrade_completed_at,
             visitor.ciphertext, visitor.encryption_iv, visitor.authentication_tag,
             answer.ciphertext AS answer_ciphertext,
             answer.encryption_iv AS answer_encryption_iv,
@@ -579,7 +754,7 @@ async function consultantList(request) {
     counts: countsResult.rows[0],
     consultations: result.rows.map((row) => ({
       id: row.id,
-      status: row.status,
+      status: row.status === "answered" && row.answer_opened_at ? "received" : row.status,
       answerDueAt: row.answer_due_at,
       tariff: row.tariff_code ? {
         code: row.tariff_code,
@@ -587,8 +762,19 @@ async function consultantList(request) {
         amountKopecks: row.tariff_amount_kopecks,
         deadlineMinutes: row.tariff_deadline_minutes,
       } : null,
+      tariffAssessment: Array.isArray(row.tariff_assessment) ? row.tariff_assessment : [],
+      tariffAssessmentConfirmed: row.tariff_assessment_confirmed === true,
+      upgradeStatus: row.upgrade_status,
+      upgradeRequestedAt: row.upgrade_requested_at,
+      upgradeCompletedAt: row.upgrade_completed_at,
       createdAt: row.created_at,
       archivedAt: row.archived_at,
+      answerOpenedAt: row.answer_opened_at,
+      recoveryCode: row.recovery_code_ciphertext ? decryptMessage(row.id, "recovery_code", {
+        ciphertext: row.recovery_code_ciphertext,
+        encryption_iv: row.recovery_code_iv,
+        authentication_tag: row.recovery_code_tag,
+      }) : null,
       question: decryptMessage(row.id, "visitor", row),
       answer: row.answer_ciphertext ? decryptMessage(row.id, "consultant", {
         ciphertext: row.answer_ciphertext,
@@ -611,14 +797,22 @@ async function consultantPendingSummary(request) {
   }
   const database = getDatabasePool();
   const result = await database.query(
-    `SELECT id, created_at
+    `SELECT id, status, answer_opened_at, upgrade_status, created_at
      FROM consultations
-     WHERE status = 'question_submitted'
+     WHERE status IN ('question_submitted', 'answered', 'archived')
      ORDER BY created_at DESC
      LIMIT 100`,
   );
   return json({
-    pending: result.rows.map((row) => ({ id: row.id, createdAt: row.created_at })),
+    pending: result.rows
+      .filter((row) => row.status === "question_submitted")
+      .map((row) => ({ id: row.id, createdAt: row.created_at })),
+    active: result.rows.map((row) => ({
+      id: row.id,
+      status: row.status === "answered" && row.answer_opened_at ? "received" : row.status,
+      upgradeStatus: row.upgrade_status,
+      answerOpenedAt: row.answer_opened_at,
+    })),
   });
 }
 
@@ -708,7 +902,7 @@ async function consultantAnswer(request) {
   if (!allowRequest("consultant-write", request, 20) || !consultantAuthorized(request)) {
     return json({ error: "unauthorized" }, 401);
   }
-  const input = await body(request);
+  const input = await body(request, ANSWER_BODY_LIMIT_BYTES);
   const answer = typeof input.answer === "string" ? input.answer.trim() : "";
   const answerWithNotice = withAnswerNotice(answer);
   if (!validUuid(input.consultationId) || answer.length < 10 || answerWithNotice.length > MAX_ANSWER_LENGTH) {
@@ -716,10 +910,13 @@ async function consultantAnswer(request) {
   }
   const database = getDatabasePool();
   const consultation = await database.query(
-    "SELECT id FROM consultations WHERE id = $1 AND status IN ('question_submitted', 'answered')",
+    "SELECT id, upgrade_status FROM consultations WHERE id = $1 AND status IN ('question_submitted', 'answered')",
     [input.consultationId],
   );
   if (!consultation.rows[0]) return json({ error: "not_found" }, 404);
+  if (["requested", "awaiting_payment"].includes(consultation.rows[0].upgrade_status)) {
+    return json({ error: "upgrade_decision_pending" }, 409);
+  }
   const encrypted = encryptMessage(input.consultationId, "consultant", answerWithNotice);
   const client = await database.connect();
   try {
@@ -731,11 +928,13 @@ async function consultantAnswer(request) {
       [randomUUID(), input.consultationId, encrypted.ciphertext, encrypted.iv, encrypted.authenticationTag],
     );
     await client.query(
-      "UPDATE consultations SET status = 'answered', updated_at = now() WHERE id = $1",
+      `UPDATE consultations
+       SET status = 'archived', archived_at = now(), answer_opened_at = NULL, updated_at = now()
+       WHERE id = $1`,
       [input.consultationId],
     );
     await client.query("COMMIT");
-    return json({ saved: true, answer: answerWithNotice });
+    return json({ saved: true, status: "archived", answer: answerWithNotice });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     throw error;
@@ -752,6 +951,7 @@ async function consultantAiDraft(request) {
 
   const input = await body(request);
   if (!validUuid(input.consultationId)) return json({ error: "invalid_consultation" }, 400);
+  const draftMode = input.mode === "detailed" ? "detailed" : "brief";
   const regenerate = input.regenerate === true;
   const database = getDatabasePool();
   const result = await database.query(
@@ -779,7 +979,7 @@ async function consultantAiDraft(request) {
 
   const question = decryptMessage(consultation.id, "visitor", consultation);
   try {
-    const draft = await createConsultationDraft(question);
+    const draft = await createConsultationDraft(question, draftMode);
     const encrypted = encryptMessage(consultation.id, "ai_draft", draft);
     await database.query(
       `INSERT INTO consultation_messages
@@ -792,9 +992,16 @@ async function consultantAiDraft(request) {
                      created_at = now()`,
       [randomUUID(), consultation.id, encrypted.ciphertext, encrypted.iv, encrypted.authenticationTag],
     );
-    return json({ draft, cached: false });
+    return json({ draft, mode: draftMode, cached: false });
   } catch (error) {
-    console.error(`AI draft request failed: ${error?.code ?? "unknown_error"}; status=${error?.status ?? "none"}`);
+    console.error(`GigaChat draft request failed: ${error?.code ?? "unknown_error"}; stage=${error?.stage ?? "unknown"}; status=${error?.status ?? "none"}`);
+    if (error?.code === "gigachat_auth_failed" || error?.code === "gigachat_auth_empty") {
+      return json({ error: "ai_credentials_rejected" }, 502);
+    }
+    if (error?.status === 402) return json({ error: "ai_payment_required" }, 502);
+    if (error?.status === 401 || error?.status === 403) return json({ error: "ai_credentials_rejected" }, 502);
+    if (error?.status === 404 || error?.status === 422) return json({ error: "ai_model_unavailable" }, 502);
+    if (error?.status === 429) return json({ error: "ai_limit_reached" }, 502);
     return json({ error: "ai_unavailable" }, 502);
   }
 }
@@ -886,11 +1093,12 @@ async function webhook(request) {
   if (input?.event !== "payment.succeeded" || typeof paymentId !== "string") return json({ accepted: true });
   const database = getDatabasePool();
   const local = await database.query(
-    "SELECT consultation_id FROM payments WHERE provider_payment_id = $1",
+    "SELECT consultation_id, purpose FROM payments WHERE provider_payment_id = $1",
     [paymentId],
   );
   if (!local.rows[0]) return json({ accepted: true });
-  await synchronizePayment(database, local.rows[0].consultation_id);
+  if (local.rows[0].purpose === "tariff_upgrade") await synchronizeUpgradePayment(database, local.rows[0].consultation_id);
+  else await synchronizePayment(database, local.rows[0].consultation_id);
   return json({ accepted: true });
 }
 
@@ -898,6 +1106,8 @@ export async function routeApi(request) {
   const url = new URL(request.url);
   const route = `${request.method} ${url.pathname}`;
   try {
+    const legalDocumentsResponse = await routeLegalDocuments(request);
+    if (legalDocumentsResponse) return legalDocumentsResponse;
     if (route === "GET /api/consultation-price") return publicPrice();
     if (route === "GET /api/tariffs") return publicTariffs();
     if (route === "GET /api/feedback") return publicFeedbackList();
@@ -905,6 +1115,7 @@ export async function routeApi(request) {
     if (route === "POST /api/visits") return registerVisit(request);
     if (route === "POST /api/payments/create") return createPayment(request);
     if (route === "POST /api/consultations/status") return consultationStatus(request);
+    if (route === "POST /api/consultations/upgrade") return consultationUpgradeDecision(request);
     if (route === "POST /api/consultations/question") return saveQuestion(request);
     if (route === "POST /api/consultations/attachments") return attachmentsDisabled();
     if (route === "POST /api/consultations/answer") return openAnswer(request);
@@ -915,6 +1126,7 @@ export async function routeApi(request) {
     if (route === "DELETE /api/consultant/consultations") return consultantDelete(request);
     if (route === "POST /api/consultant/ai-draft") return consultantAiDraft(request);
     if (route === "POST /api/consultant/answer") return consultantAnswer(request);
+    if (route === "POST /api/consultant/request-upgrade") return consultantRequestUpgrade(request);
     if (route === "GET /api/consultant/calculations") return consultantCalculations(request);
     if (route === "POST /api/consultant/calculations") return consultantCalculationCreate(request);
     if (route === "DELETE /api/consultant/calculations") return consultantCalculationDelete(request);

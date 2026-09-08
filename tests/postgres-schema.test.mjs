@@ -11,10 +11,13 @@ test("database schema stores consultation text only as authenticated ciphertext"
   assert.doesNotMatch(source, /question_text|answer_text|question varchar|answer varchar/i);
 });
 
-test("database schema never stores the four-digit code itself", () => {
+test("database schema stores a code hash and optional encrypted recovery copy, never plaintext", () => {
   assert.match(source, /code_hash char\(64\) NOT NULL/);
   assert.doesNotMatch(source, /access_code\s+(?:char|varchar|text|integer)/i);
   assert.match(source, /browser_token_hash char\(64\) NOT NULL/);
+  assert.match(source, /recovery_code_ciphertext bytea/);
+  assert.match(source, /recovery_code_iv bytea/);
+  assert.match(source, /recovery_code_tag bytea/);
 });
 
 test("configuration diagnostics can reveal variable names but never values", () => {
@@ -49,7 +52,7 @@ test("dynamic price and encrypted attachments have durable schema", () => {
   assert.match(source, /UNIQUE \(consultation_id, ordinal\)/);
 });
 
-test("Qwen drafts can be cached as encrypted consultation messages", () => {
+test("GigaChat drafts can be cached as encrypted consultation messages", () => {
   assert.match(source, /'ai_draft'/);
   assert.match(source, /consultation_ai_draft_unique/);
 });
@@ -59,6 +62,8 @@ test("each consultation stores an immutable tariff snapshot", () => {
   assert.match(source, /tariff_name varchar\(80\)/);
   assert.match(source, /tariff_amount_kopecks integer/);
   assert.match(source, /tariff_deadline_minutes integer/);
+  assert.match(source, /tariff_assessment jsonb NOT NULL/);
+  assert.match(source, /tariff_assessment_confirmed boolean NOT NULL DEFAULT false/);
 });
 
 test("urgent tariff availability is stored in site settings", () => {
@@ -77,4 +82,13 @@ test("feedback is encrypted and visit totals are stored without visitor identifi
   assert.match(source, /CREATE TABLE IF NOT EXISTS visitor_daily_counts/);
   assert.match(source, /visit_day date PRIMARY KEY/);
   assert.doesNotMatch(source, /visitor_daily_counts[\s\S]{0,300}(?:ip_address|visitor_id|browser_id)/i);
+});
+
+test("tariff upgrades have durable consultation and payment state", () => {
+  assert.match(source, /purpose varchar\(24\) NOT NULL DEFAULT 'consultation'/);
+  assert.match(source, /purpose IN \('consultation', 'tariff_upgrade'\)/);
+  assert.match(source, /confirmation_url text/);
+  assert.match(source, /upgrade_status varchar\(24\)/);
+  assert.match(source, /upgrade_requested_at timestamptz/);
+  assert.match(source, /upgrade_completed_at timestamptz/);
 });

@@ -11,7 +11,7 @@ RUN npm run build
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=3000
-ENV NODE_EXTRA_CA_CERTS=/app/certs/timeweb-ca.crt
+ENV NODE_EXTRA_CA_CERTS=/app/certs/russian-trusted-root-ca.crt
 
 EXPOSE 3000
 

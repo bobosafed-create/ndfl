@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import LegalFooterLinks from "../../components/LegalFooterLinks";
+import { reachMetrikaGoal } from "../../lib/metrika";
 
 const RUB = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });
 const CONSULTATION_PRICE = 990;
@@ -81,6 +83,7 @@ export default function CalculatorPage() {
           <h2 id="example-heading">Квартира от застройщика без отделки</h2>
           <h3>Проверьте возможную экономию</h3>
           <p>Введите три суммы и ответьте на два важных вопроса. Остальные обстоятельства после заказа проверит консультант.</p>
+          <p className="related-inline-note">Если вы ещё не определили, истёк ли минимальный срок владения, <a href="/srok-vladeniya" onClick={() => reachMetrikaGoal("content_period_open", { source: "calculator" })}>сначала проверьте срок — возможно, налог вообще не возникает →</a></p>
         </header>
         <div className="simple-calc-card">
           <div className="simple-calc-inputs">
@@ -100,16 +103,16 @@ export default function CalculatorPage() {
           </div>
           <div className="simple-disclaimer"><b>Это демонстрационный расчёт</b><p>Он не учитывает срок владения, кадастровую стоимость, региональные правила, доли собственников и другие обстоятельства. Они могут изменить итог в любую сторону.</p></div>
         </div>
-        <div className="savings-law"><b>Почему это возможно</b><p>ФНС разъясняет: доход от продажи квартиры можно уменьшить на подтверждённые расходы по её отделке, если договор предусматривал приобретение квартиры без отделки. Для квартиры применяются подп. 2 п. 2 статьи 220 НК РФ во взаимосвязи с подп. 4 и 5 п. 3 статьи 220 НК РФ.</p><a href="https://www.nalog.gov.ru/rn40/news/tax_doc_news/6168830/" target="_blank" rel="noreferrer">Проверить разъяснение на сайте ФНС России →</a></div>
+        <div className="savings-law"><b>Почему это возможно</b><p>ФНС разъясняет: доход от продажи квартиры можно уменьшить на подтверждённые расходы по её отделке, если договор предусматривал приобретение квартиры без отделки. Для квартиры применяются подп. 2 п. 2 статьи 220 НК РФ во взаимосвязи с подп. 4 и 5 п. 3 статьи 220 НК РФ.</p></div>
         <p className="savings-caveat">В примере предполагается, что все расходы относятся к допустимым и подтверждены надлежащими документами. Не всякий ремонт или покупка для интерьера признаются отделкой.</p>
       </section>
 
       <section className="savings-offer">
         <div><span>Следующий шаг</span><h2>Проверьте расчёт до подачи 3-НДФЛ</h2><p>Цифры из калькулятора будут перенесены в бланк вопроса. Вы сможете дополнить и отредактировать их перед отправкой.</p></div>
-        <aside><strong>990 ₽</strong><b>Расчёт и подробный разбор — до 8 часов</b><small>Допопцию «Срочно» до 2 часов можно выбрать на главной странице за 300 ₽</small><button type="button" onClick={goToConsultation}>Перейти к персональному разбору →</button><em>Без регистрации</em></aside>
+        <aside><strong>990 ₽</strong><b>Расчёт и подробный разбор — до 8 часов</b><small>Допопцию «Срочно» до 2 часов можно выбрать на главной странице за 300 ₽</small><button type="button" onClick={() => { reachMetrikaGoal("content_to_consultation", { source: "calculator", tariff: "detailed-review" }); goToConsultation(); }}>Перейти к персональному разбору →</button><em>Без регистрации</em></aside>
       </section>
 
-      <footer className="calc-footer"><p>Предварительный пример не заменяет проверку договора, расходов и подтверждающих документов.</p><nav><a href="/legal#offer">Оферта</a><a href="/legal#privacy">Конфиденциальность</a><a href="/legal#contacts">Контакты</a></nav></footer>
+      <footer className="calc-footer"><p>Предварительный пример не заменяет проверку договора, расходов и подтверждающих документов.</p><LegalFooterLinks /></footer>
     </main>
   );
 }

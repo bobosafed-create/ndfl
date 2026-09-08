@@ -3,11 +3,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { reachMetrikaGoal } from "../lib/metrika";
 import { isServiceOpen } from "../lib/service-schedule.mjs";
+import LegalFooterLinks from "../components/LegalFooterLinks";
 
 type Stage = "room" | "payment" | "question" | "waiting" | "answer";
 type Tariff = { code: string; name: string; description: string; amountKopecks: number; deadlineMinutes: number; recommended?: boolean; available?: boolean };
 type UrgentAddon = { code: string; name: string; description: string; amountKopecks: number; deadlineMinutes: number; available?: boolean };
 type ScheduleDay = { day: string; enabled: boolean; start: string; end: string };
+type UpgradeStatus = null | "requested" | "declined" | "awaiting_payment" | "completed";
+type SituationResource = { href: string; label: string; goal: "content_apartment_open" | "content_period_open" | "content_calc_open" };
+type Situation = { slug: string; title: string; text: string; diagnostic: string; path: string; published: boolean; resources?: SituationResource[] };
 
 const scheduleDayLabels: Record<string, string> = {
   monday: "Понедельник", tuesday: "Вторник", wednesday: "Среда", thursday: "Четверг",
@@ -17,23 +21,67 @@ const scheduleDayLabels: Record<string, string> = {
 const fallbackServiceSchedule: ScheduleDay[] = Object.keys(scheduleDayLabels).map((day, index) => ({ day, enabled: index < 5, start: "09:00", end: "13:00" }));
 
 const fallbackTariffs: Tariff[] = [
-  { code: "situation-check", name: "Проверка ситуации", description: "Персональная проверка НДФЛ, обязанности подать 3-НДФЛ и возможных способов уменьшить налог или получить возврат", amountKopecks: 39000, deadlineMinutes: 240, recommended: true },
-  { code: "detailed-review", name: "Расчёт и подробный разбор", description: "Расчёт налога или возврата, нормативные основания и подробные рекомендации по следующим действиям", amountKopecks: 99000, deadlineMinutes: 480 },
+  { code: "situation-check", name: "Проверка ситуации", description: "Персональная проверка НДФЛ, возникает ли обязанность подать 3-НДФЛ, возможные способы законно уменьшить налог или получить возврат", amountKopecks: 39000, deadlineMinutes: 240, recommended: true },
+  { code: "detailed-review", name: "Расчёт и подробный разбор", description: "Расчет налога или возврата, нормативные основания и подробные рекомендации по вашему вопросу", amountKopecks: 99000, deadlineMinutes: 480 },
 ];
 
 const fallbackUrgentAddon: UrgentAddon = { code: "urgent", name: "Срочно", description: "Письменный результат в течение 2 часов", amountKopecks: 30000, deadlineMinutes: 120, available: true };
 
-const situations = [
-  { slug: "prodazha-kvartiry", title: "Продал квартиру", text: "Срок владения, расходы, вычет и обязанность подать 3-НДФЛ.", path: "/prodazha-kvartiry/", published: false },
-  { slug: "prodazha-avtomobilya", title: "Продал автомобиль", text: "Нужно ли декларировать доход и можно ли учесть стоимость покупки.", path: "/prodazha-avtomobilya/", published: false },
-  { slug: "pokupka-kvartiry", title: "Купил квартиру", text: "Имущественный вычет и возврат НДФЛ, включая ипотечные проценты.", path: "/vychet-pokupka-kvartiry/", published: false },
-  { slug: "lechenie", title: "Оплачивал лечение", text: "Социальный вычет за лечение, лекарства и медицинские услуги.", path: "/vychet-lechenie/", published: false },
-  { slug: "obuchenie", title: "Оплачивал обучение", text: "Возврат НДФЛ за своё обучение или обучение близких.", path: "/vychet-obuchenie/", published: false },
-  { slug: "vklady", title: "Получил проценты по вкладам", text: "Проверка необлагаемой суммы и налога по сведениям банков.", path: "/nalog-vklady/", published: false },
-  { slug: "arenda", title: "Сдавал имущество", text: "НДФЛ с аренды, декларация и подходящий порядок уплаты.", path: "/arenda/", published: false },
-  { slug: "investitsii", title: "Акции, дивиденды, инвестиции", text: "Доходы у брокера, дивиденды, убытки и инвестиционные вычеты.", path: "/investitsii/", published: false },
-  { slug: "drugaya-situatsiya", title: "Другая ситуация", text: "Разберём нестандартный доход, вычет или уведомление налоговой.", path: "/drugaya-situatsiya/", published: false },
+const tariffCriteria: Record<string, { heading: string; items: string[] }> = {
+  "situation-check": {
+    heading: "Подходит, если требуется:",
+    items: [
+      "разобрать один объект или одну операцию",
+      "определить обязанность подать 3-НДФЛ",
+      "предварительно проверить право на вычет",
+      "получить краткий письменный вывод",
+      "получить общий порядок действий",
+      "обойтись без сравнения нескольких вариантов и сложного расчёта",
+    ],
+  },
+  "detailed-review": {
+    heading: "Назначается, если требуется хотя бы одно:",
+    items: [
+      "точный расчёт налога или возврата",
+      "разобрать несколько сделок, объектов или лет",
+      "сравнить способы уменьшения налога",
+      "распределить вычет между супругами",
+      "разобрать инвестиции, иностранные доходы или данные нескольких брокеров",
+      "провести сальдирование убытков",
+      "проанализировать требование или уведомление ФНС",
+      "подготовить подробное нормативное обоснование",
+      "ответить на несколько связанных вопросов",
+    ],
+  },
+};
+
+const tariffAssessmentQuestions = [
+  { id: "exact-calculation", label: "Нужен точный расчёт налога или возврата" },
+  { id: "multiple-items", label: "Есть несколько сделок, объектов или налоговых периодов" },
+  { id: "compare-options", label: "Нужно сравнить несколько способов уменьшения налога" },
+  { id: "spouses", label: "Нужно распределить вычет между супругами" },
+  { id: "investments", label: "Есть инвестиции, иностранные доходы или несколько брокеров" },
+  { id: "loss-offset", label: "Нужно провести сальдирование убытков" },
+  { id: "tax-notice", label: "Нужно проанализировать требование или уведомление ФНС" },
+  { id: "legal-detail", label: "Нужно подробное нормативное обоснование" },
+  { id: "multiple-questions", label: "В обращении несколько связанных вопросов" },
 ] as const;
+
+type TariffAssessmentId = typeof tariffAssessmentQuestions[number]["id"];
+
+const situations: Situation[] = [
+  { slug: "prodazha-kvartiry", title: "Продал квартиру", text: "Срок владения, расходы, вычет и обязанность подать 3-НДФЛ.", diagnostic: "Для ситуации «Продал квартиру» важны: минимальный срок владения, правило 70% кадастровой стоимости, оптимизация налогооблагаемой базы, сроки отчётности и оплаты, сохранность документов и сроки их хранения.", path: "/prodazha-kvartiry", published: true, resources: [
+    { href: "/prodazha-kvartiry", label: "Подробнее о продаже квартиры", goal: "content_apartment_open" },
+  ] },
+  { slug: "prodazha-avtomobilya", title: "Продал автомобиль", text: "Нужно ли декларировать доход и можно ли учесть стоимость покупки.", diagnostic: "Для ситуации «Продал автомобиль» важны: срок владения, сумма продажи, расчёт налогооблагаемой базы — уменьшение суммы продажи на стандартный вычет или на сумму документально подтверждённых расходов, сроки отчётности и оплаты.", path: "/prodazha-avtomobilya/", published: false },
+  { slug: "pokupka-kvartiry", title: "Купил квартиру", text: "Имущественный вычет и возврат НДФЛ, включая ипотечные проценты.", diagnostic: "Для ситуации «Купил квартиру» важны: право на имущественный вычет, точка отсчёта для вычета, распределение вычета в браке, срок владения для будущей продажи.", path: "/vychet-pokupka-kvartiry/", published: false },
+  { slug: "lechenie", title: "Оплачивал лечение", text: "Социальный вычет за лечение, лекарства и медицинские услуги.", diagnostic: "Для ситуации «Оплачивал лечение» важны: право на вычет, код услуги в справке, за кого оплачено, срок давности, пакет документов.", path: "/vychet-lechenie/", published: false },
+  { slug: "obuchenie", title: "Оплачивал обучение", text: "Возврат НДФЛ за своё обучение или обучение близких.", diagnostic: "Для ситуации «Оплачивал обучение» важны: право на вычет и лимиты, наличие документов и лицензии, срок давности, упрощённый порядок получения вычета, наличие облагаемого дохода.", path: "/vychet-obuchenie/", published: false },
+  { slug: "vklady", title: "Получил проценты по вкладам", text: "Проверка необлагаемой суммы и налога по сведениям банков.", diagnostic: "Для ситуации «Получил проценты по вкладам» важны: суммарный доход по всем банкам, размер необлагаемого лимита, наличие уведомления в личном кабинете ФНС, сроки и ставка уплаты, корректность данных.", path: "/nalog-vklady/", published: false },
+  { slug: "arenda", title: "Сдавал имущество", text: "НДФЛ с аренды, декларация и подходящий порядок уплаты.", diagnostic: "Для ситуации «Сдавал имущество» важны: статус арендатора как налогового агента, налоговый режим, налоговая база и коммунальные услуги, сроки отчётности и оплаты, регистрация долгосрочных договоров, сохранность документов и сроки их хранения.", path: "/arenda/", published: false },
+  { slug: "investitsii", title: "Акции, дивиденды, инвестиции", text: "Доходы у брокера, дивиденды, убытки и инвестиционные вычеты.", diagnostic: "Для ситуации «Акции, дивиденды, инвестиции» важны: роль брокера как налогового агента, дивиденды и двойное налогообложение, налоговые льготы — льгота долгосрочного владения и ИИС, сальдирование убытков, сверка данных и сроки.", path: "/investitsii/", published: false },
+  { slug: "drugaya-situatsiya", title: "Другая ситуация", text: "Разберём нестандартный доход, вычет или уведомление налоговой.", diagnostic: "Для другой ситуации важны: вид дохода или вычета, даты и суммы, основание получения дохода, подтверждающие документы, сведения налогового агента, сроки отчётности и оплаты.", path: "/drugaya-situatsiya/", published: false },
+];
 
 function tariffDeadline(minutes: number) {
   if (minutes === 60) return "Ответ в течение 1 часа";
@@ -89,6 +137,12 @@ function paginateAnswer(text: string, pageSize = 1050) {
   return pages.length ? pages : [text];
 }
 
+function focusConsultationRoom() {
+  window.requestAnimationFrame(() => {
+    document.getElementById("consultation-room")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+
 export default function Home() {
   const [stage, setStage] = useState<Stage>("room");
   const [question, setQuestion] = useState("");
@@ -98,7 +152,7 @@ export default function Home() {
   const [safeMessage, setSafeMessage] = useState("");
   const [answerReady, setAnswerReady] = useState(false);
   const [codeNoticeVisible, setCodeNoticeVisible] = useState(false);
-  const [codeNoticeSeconds, setCodeNoticeSeconds] = useState(10);
+  const [codeNoticeSeconds, setCodeNoticeSeconds] = useState(60);
   const [consultationId, setConsultationId] = useState("");
   const [browserToken, setBrowserToken] = useState("");
   const [answerDueAt, setAnswerDueAt] = useState<string | null>(null);
@@ -108,6 +162,9 @@ export default function Home() {
   const [paymentMessage, setPaymentMessage] = useState("");
   const [tariffs, setTariffs] = useState<Tariff[]>(fallbackTariffs);
   const [selectedTariffCode, setSelectedTariffCode] = useState("situation-check");
+  const [tariffAssessmentFlags, setTariffAssessmentFlags] = useState<TariffAssessmentId[]>([]);
+  const [simpleAssessmentConfirmed, setSimpleAssessmentConfirmed] = useState(false);
+  const [tariffAssessmentMessage, setTariffAssessmentMessage] = useState("");
   const [urgentAddon, setUrgentAddon] = useState<UrgentAddon>(fallbackUrgentAddon);
   const [urgentSelected, setUrgentSelected] = useState(false);
   const [diagnosticSituation, setDiagnosticSituation] = useState("");
@@ -117,6 +174,9 @@ export default function Home() {
   const [visitorStats, setVisitorStats] = useState<{ total: number; today: number } | null>(null);
   const [serviceSchedule, setServiceSchedule] = useState<ScheduleDay[]>(fallbackServiceSchedule);
   const [scheduleNoticeVisible, setScheduleNoticeVisible] = useState(false);
+  const [upgradeStatus, setUpgradeStatus] = useState<UpgradeStatus>(null);
+  const [upgradeBusy, setUpgradeBusy] = useState(false);
+  const [upgradeMessage, setUpgradeMessage] = useState("");
 
   const selectedTariff = useMemo(() => tariffs.find((tariff) => tariff.code === selectedTariffCode) ?? null, [selectedTariffCode, tariffs]);
   const priceKopecks = (selectedTariff?.amountKopecks ?? fallbackTariffs[0].amountKopecks) + (urgentSelected ? urgentAddon.amountKopecks : 0);
@@ -124,6 +184,14 @@ export default function Home() {
   const selectedDeadline = urgentSelected ? tariffDeadline(urgentAddon.deadlineMinutes) : selectedTariff ? tariffDeadline(selectedTariff.deadlineMinutes) : tariffDeadline(fallbackTariffs[0].deadlineMinutes);
   const answerPages = useMemo(() => paginateAnswer(answer), [answer]);
   const serviceScheduleText = useMemo(() => formatServiceSchedule(serviceSchedule), [serviceSchedule]);
+  const requiresDetailedTariff = tariffAssessmentFlags.length > 0;
+  const tariffAssessmentCompleted = simpleAssessmentConfirmed || requiresDetailedTariff;
+  const processStep = stage === "room" ? 1 : stage === "payment" ? 2 : stage === "question" ? 3 : stage === "waiting" && codeNoticeVisible ? 4 : 5;
+
+  function processStepClass(step: number) {
+    if (step < processStep || (step === 5 && stage === "answer")) return "done";
+    return step === processStep ? "active" : "";
+  }
 
   const deadline = useMemo(() => {
     if (!answerDueAt) return "в срок выбранного тарифа";
@@ -139,6 +207,7 @@ export default function Home() {
     if (!response.ok) return null;
     const result = await response.json();
     setAnswerDueAt(result.answerDueAt ?? null);
+    setUpgradeStatus(result.upgradeStatus ?? null);
     if (result.status === "paid") {
       const purchaseGoalKey = `ndfl-metrika-purchase-${id}`;
       if (!window.localStorage.getItem(purchaseGoalKey)) {
@@ -153,9 +222,10 @@ export default function Home() {
       setSelectedTariffCode("situation-check");
       setUrgentSelected(false);
       setStage("question");
+      if (window.location.hash === "#consultation-room") focusConsultationRoom();
     } else if (result.status === "question_submitted" || result.status === "answered") {
       setAnswerReady(result.status === "answered");
-      setCodeNoticeVisible(false);
+      if (result.status === "answered") setCodeNoticeVisible(false);
       setStage("waiting");
     } else if (result.status === "cancelled") {
       window.localStorage.removeItem("ndfl-active-consultation");
@@ -177,10 +247,16 @@ export default function Home() {
         const calculatorTariff = window.sessionStorage.getItem("ndfl-calculator-tariff");
         if (calculatorTariff === "urgent") {
           setSelectedTariffCode("detailed-review");
+          setTariffAssessmentFlags(["exact-calculation"]);
+          setSimpleAssessmentConfirmed(false);
           setUrgentSelected(true);
           window.sessionStorage.removeItem("ndfl-calculator-tariff");
         } else if (calculatorTariff && result.tariffs.some((tariff: Tariff) => tariff.code === calculatorTariff && tariff.available !== false)) {
           setSelectedTariffCode(calculatorTariff);
+          if (calculatorTariff === "detailed-review") {
+            setTariffAssessmentFlags(["exact-calculation"]);
+            setSimpleAssessmentConfirmed(false);
+          }
           window.sessionStorage.removeItem("ndfl-calculator-tariff");
         }
         if (result.tariffs.some((tariff: Tariff) => tariff.code === selectedTariffCode && tariff.available === false)) setSelectedTariffCode("situation-check");
@@ -209,7 +285,19 @@ export default function Home() {
 
   useEffect(() => {
     const calculatorSummary = window.sessionStorage.getItem("ndfl-calculator-summary");
-    if (calculatorSummary) setQuestion((current) => current || calculatorSummary.slice(0, 1200));
+    if (!calculatorSummary) return;
+    const timer = window.setTimeout(() => setQuestion((current) => current || calculatorSummary.slice(0, 1200)), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    const requestedSituation = new URLSearchParams(window.location.search).get("situation");
+    if (!requestedSituation || !situations.some((item) => item.slug === requestedSituation)) return;
+    const timer = window.setTimeout(() => {
+      setDiagnosticSituation(requestedSituation);
+      setDiagnosticComplete(false);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -222,11 +310,16 @@ export default function Home() {
         setConsultationId(access.id);
         setBrowserToken(access.token);
         setConsultationCode(access.code);
-        const returnedFromPayment = new URLSearchParams(window.location.search).get("payment") === "return";
-        if (returnedFromPayment) {
+        const paymentReturn = new URLSearchParams(window.location.search).get("payment");
+        if (paymentReturn === "return") {
           setStage("payment");
           setPaymentMessage("Проверяем результат оплаты…");
-          window.history.replaceState({}, "", `${window.location.pathname}#room`);
+          window.history.replaceState({}, "", `${window.location.pathname}#consultation-room`);
+          focusConsultationRoom();
+        } else if (paymentReturn === "upgrade-return") {
+          setStage("waiting");
+          setUpgradeStatus("awaiting_payment");
+          window.history.replaceState({}, "", `${window.location.pathname}#answer-safe`);
         }
         void refreshStatus(access.id, access.token);
       }, 0);
@@ -257,7 +350,7 @@ export default function Home() {
       const response = await fetch("/api/payments/create", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ tariffCode: selectedTariffCode, urgent: urgentSelected }),
+        body: JSON.stringify({ tariffCode: selectedTariffCode, urgent: urgentSelected, tariffAssessment: { confirmed: tariffAssessmentCompleted, flags: tariffAssessmentFlags } }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "payment_failed");
@@ -276,6 +369,15 @@ export default function Home() {
       if (error instanceof Error && error.message === "questions_unavailable") {
         setStage("room");
         setScheduleNoticeVisible(true);
+      } else if (error instanceof Error && error.message === "tariff_assessment_required") {
+        setStage("room");
+        setTariffAssessmentMessage("Перед оплатой подтвердите условия подбора тарифа.");
+        document.getElementById("tariff-assessment")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      } else if (error instanceof Error && error.message === "detailed_tariff_required") {
+        setStage("room");
+        setSelectedTariffCode("detailed-review");
+        setTariffAssessmentMessage("По отмеченным условиям доступен тариф «Расчёт и подробный разбор».");
+        document.getElementById("tariff-options")?.scrollIntoView({ behavior: "smooth", block: "center" });
       } else {
         setPaymentMessage(error instanceof Error && error.message === "urgent_tariff_unavailable"
           ? "Допопция «Срочно» сейчас временно недоступна. Оформите обычный срок или повторите позже."
@@ -287,6 +389,17 @@ export default function Home() {
 
   async function beginPayment() {
     if (busy) return;
+    if (!tariffAssessmentCompleted) {
+      setTariffAssessmentMessage("Сначала отметьте признаки вашей ситуации — сайт подберёт минимально подходящий тариф.");
+      document.getElementById("tariff-assessment")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    if (requiresDetailedTariff && selectedTariffCode !== "detailed-review") {
+      setSelectedTariffCode("detailed-review");
+      setTariffAssessmentMessage("По отмеченным условиям требуется тариф «Расчёт и подробный разбор».");
+      document.getElementById("tariff-options")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
     setBusy(true);
     let latestSchedule: ScheduleDay[] | null = null;
     try {
@@ -313,6 +426,29 @@ export default function Home() {
     document.getElementById("pricing-heading")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
+  function toggleTariffAssessment(id: TariffAssessmentId, checked: boolean) {
+    setTariffAssessmentFlags((current) => {
+      const next = checked ? [...current, id] : current.filter((item) => item !== id);
+      return [...new Set(next)];
+    });
+    if (checked) {
+      setSelectedTariffCode("detailed-review");
+      setSimpleAssessmentConfirmed(false);
+    }
+    setTariffAssessmentMessage(checked ? "Отмечен признак подробного разбора — выбран тариф 990 ₽." : "");
+  }
+
+  function confirmSimpleAssessment(checked: boolean) {
+    setSimpleAssessmentConfirmed(checked);
+    if (checked) {
+      setTariffAssessmentFlags([]);
+      setSelectedTariffCode("situation-check");
+      setTariffAssessmentMessage("По указанным условиям достаточно тарифа 390 ₽. При желании можно выбрать подробный разбор.");
+    } else {
+      setTariffAssessmentMessage("");
+    }
+  }
+
   function downloadAnswer() {
     const documentText = `Ответ консультанта по НДФЛ\r\nКонсультация № ${displayCode(consultationCode)}\r\n\r\n${answer}`;
     const url = URL.createObjectURL(new Blob([documentText], { type: "text/plain;charset=utf-8" }));
@@ -328,12 +464,20 @@ export default function Home() {
   }
 
   useEffect(() => {
-    if (!consultationId || !browserToken || (stage !== "waiting" && stage !== "payment")) return;
+    if (!consultationId || !browserToken || answerReady || (stage !== "waiting" && stage !== "payment")) return;
+    const checkStatus = () => void refreshStatus(consultationId, browserToken);
+    const checkVisibleStatus = () => { if (document.visibilityState === "visible") checkStatus(); };
     const timer = window.setInterval(() => {
-      void refreshStatus(consultationId, browserToken);
-    }, stage === "payment" ? 4000 : 30000);
-    return () => window.clearInterval(timer);
-  }, [browserToken, consultationId, refreshStatus, stage]);
+      checkStatus();
+    }, stage === "payment" ? 4000 : 10000);
+    window.addEventListener("focus", checkStatus);
+    document.addEventListener("visibilitychange", checkVisibleStatus);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", checkStatus);
+      document.removeEventListener("visibilitychange", checkVisibleStatus);
+    };
+  }, [answerReady, browserToken, consultationId, refreshStatus, stage]);
 
   useEffect(() => {
     if (stage !== "waiting" || !codeNoticeVisible) return;
@@ -350,6 +494,11 @@ export default function Home() {
     return () => window.clearInterval(timer);
   }, [stage, codeNoticeVisible]);
 
+  useEffect(() => {
+    if (stage !== "waiting" && stage !== "answer") return;
+    document.getElementById("answer-safe")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [answerReady, stage]);
+
   async function saveQuestion() {
     if (question.trim().length < 10 || busy || !privacyAccepted) return;
     setBusy(true);
@@ -362,7 +511,7 @@ export default function Home() {
       if (!response.ok) throw new Error("save_failed");
       const result = await response.json();
       setAnswerDueAt(result.answerDueAt ?? null);
-      setCodeNoticeSeconds(10);
+      setCodeNoticeSeconds(60);
       setCodeNoticeVisible(true);
       setAnswerReady(false);
       setStage("waiting");
@@ -403,6 +552,34 @@ export default function Home() {
     }
   }
 
+  async function decideUpgrade(decision: "decline" | "pay") {
+    if (!consultationId || !browserToken || upgradeBusy) return;
+    setUpgradeBusy(true);
+    setUpgradeMessage("");
+    try {
+      const response = await fetch("/api/consultations/upgrade", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ consultationId, browserToken, decision }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "upgrade_failed");
+      setUpgradeStatus(result.upgradeStatus ?? null);
+      if (decision === "pay" && typeof result.confirmationUrl === "string") {
+        window.location.assign(result.confirmationUrl);
+        return;
+      }
+      setUpgradeMessage(decision === "decline"
+        ? "Вы сохранили тариф 390 ₽. Консультант подготовит краткий ответ в первоначальном объёме."
+        : "Доплата подтверждена. Консультант подготовит подробный разбор.");
+      await refreshStatus(consultationId, browserToken);
+    } catch {
+      setUpgradeMessage("Не удалось выполнить действие. Проверьте соединение и повторите попытку.");
+    } finally {
+      setUpgradeBusy(false);
+    }
+  }
+
   function resetConsultation() {
     window.localStorage.removeItem("ndfl-active-consultation");
     setStage("room");
@@ -411,8 +588,11 @@ export default function Home() {
     setSafeCode("");
     setAnswerReady(false);
     setCodeNoticeVisible(false);
-    setCodeNoticeSeconds(10);
+    setCodeNoticeSeconds(60);
     setSafeMessage("");
+    setTariffAssessmentFlags([]);
+    setSimpleAssessmentConfirmed(false);
+    setTariffAssessmentMessage("");
     setConsultationId("");
     setBrowserToken("");
     setAnswer("");
@@ -421,6 +601,9 @@ export default function Home() {
     setSelectedTariffCode("situation-check");
     setUrgentSelected(false);
     setVpnNoticeVisible(false);
+    setUpgradeStatus(null);
+    setUpgradeBusy(false);
+    setUpgradeMessage("");
   }
 
   return (
@@ -449,19 +632,30 @@ export default function Home() {
       </header>
 
       <section className="situations-section" aria-labelledby="situations-heading">
-        <div className="content-heading"><span>Что у вас произошло?</span><h2 id="situations-heading">Выберите свою ситуацию</h2><p>Не нужно заранее разбираться в Налоговом кодексе. Выберите тему — сейчас карточка откроет бесплатную первичную диагностику, а позже сможет вести на отдельную тематическую страницу.</p></div>
+        <div className="content-heading"><span>Что у вас произошло?</span><h2 id="situations-heading">Выберите свою ситуацию</h2><p>Выберите тему для бесплатной первичной диагностики. Для продажи квартиры также доступны подробные материалы и калькулятор.</p></div>
         <div className="situations-grid">
-          {situations.map((item, index) => <a key={item.slug} href={item.published ? item.path : "#diagnostic"} data-future-path={item.path} onClick={() => { setDiagnosticSituation(item.slug); setDiagnosticComplete(false); }}><span>{String(index + 1).padStart(2, "0")}</span><h3>{item.title}</h3><p>{item.text}</p><b>Проверить ситуацию →</b></a>)}
+          {situations.map((item, index) => <article key={item.slug} className={item.resources ? "has-resources" : undefined}>
+            <span>{String(index + 1).padStart(2, "0")}</span><h3>{item.title}</h3><p>{item.text}</p>
+            {item.resources && <div className="situation-resources"><small>Полезные материалы</small>{item.resources.map((resource) => <a key={resource.href} href={resource.href} onClick={() => reachMetrikaGoal(resource.goal, { source: "apartment_card" })}>{resource.label} →</a>)}</div>}
+            <a className="situation-diagnostic-link" href="#diagnostic" onClick={() => { setDiagnosticSituation(item.slug); setDiagnosticComplete(false); }}>Проверить ситуацию →</a>
+          </article>)}
         </div>
+        <aside className="home-tools" aria-labelledby="home-tools-heading">
+          <div><span>Полезные инструменты до консультации</span><h3 id="home-tools-heading">Разберитесь в продаже квартиры на конкретных примерах</h3><p>Проверьте срок владения или предварительно рассчитайте налог. После этого при необходимости можно передать исходные данные консультанту.</p></div>
+          <nav aria-label="Материалы о продаже квартиры">
+            <a href="/srok-vladeniya" onClick={() => reachMetrikaGoal("content_period_open", { source: "home_tools" })}><small>Срок владения квартирой</small><b>Определите, какой срок применяется и возникает ли НДФЛ.</b><span>Проверить срок →</span></a>
+            <a href="/calc" onClick={() => reachMetrikaGoal("content_calc_open", { source: "home_tools" })}><small>Калькулятор налога</small><b>Сравните варианты расчёта и возможную экономию.</b><span>Рассчитать налог →</span></a>
+          </nav>
+        </aside>
       </section>
 
       <section id="diagnostic" className="diagnostic-section" aria-labelledby="diagnostic-heading">
-        <div><span className="mini-label">Бесплатная первичная диагностика</span><h2 id="diagnostic-heading">Не уверены, что вам вообще нужна консультация?</h2><p>Укажите тип ситуации. Мы бесплатно подскажем, что в ней обычно требуется проверить. Это предварительная ориентация, а не индивидуальная налоговая консультация.</p></div>
+        <div><span className="mini-label">Бесплатная первичная диагностика</span><h2 id="diagnostic-heading">Не уверены, что вам вообще нужна консультация?</h2><p>Укажите тип ситуации. Мы бесплатно подскажем, что в ней обычно требуется проверить. Это предварительный обзор, а не индивидуальная налоговая консультация.</p></div>
         <div className="diagnostic-card">
           <label htmlFor="diagnostic-situation">Что произошло?</label>
           <select id="diagnostic-situation" value={diagnosticSituation} onChange={(event) => { setDiagnosticSituation(event.target.value); setDiagnosticComplete(false); }}><option value="">Выберите ситуацию</option>{situations.map((item) => <option value={item.slug} key={item.slug}>{item.title}</option>)}</select>
           <button className="action-button" type="button" disabled={!diagnosticSituation} onClick={() => setDiagnosticComplete(true)}>Начать бесплатную проверку</button>
-          {diagnosticComplete && <div className="diagnostic-result" role="status"><b>Что стоит проверить</b><p>Для ситуации «{situations.find((item) => item.slug === diagnosticSituation)?.title}» важны даты, суммы, документы и обстоятельства получения дохода или права на вычет. Если вывод влияет на платёж или возврат, выберите персональную проверку ниже.</p><a href="#pricing-heading">Выбрать формат разбора →</a></div>}
+          {diagnosticComplete && <div className="diagnostic-result" role="status"><b>Что стоит проверить</b><p>{situations.find((item) => item.slug === diagnosticSituation)?.diagnostic} Если эти обстоятельства влияют на платёж или возврат, выберите персональную проверку ниже.</p><a href="#pricing-heading">Выбрать формат разбора →</a></div>}
         </div>
       </section>
 
@@ -498,7 +692,7 @@ export default function Home() {
         <div className="qa-list">
           <details>
             <summary><span>01</span>Квартиру подарил дальний родственник. Когда возникает налог и как уменьшить его при продаже?</summary>
-            <div className="qa-answer"><p>При дарении недвижимости от дяди НДФЛ, как правило, возникает: дядя не относится к близким родственникам, освобождённым от налога. При продаже раньше минимального срока владения доход можно уменьшить либо на имущественный вычет 1 млн ₽, либо на подтверждённые расходы — выбор зависит от документов и обстоятельств.</p><p>В отдельных случаях учитываются расходы дарителя на покупку квартиры либо стоимость, с которой был уплачен НДФЛ при дарении. Точный расчёт требует проверки дат, кадастровой стоимости и документов дарителя.</p><a href="https://www.nalog.gov.ru/rn24/taxation/taxes/dec/10573723/" target="_blank" rel="noreferrer">Проверить правило на сайте ФНС России →</a></div>
+            <div className="qa-answer"><p>При дарении недвижимости от дяди НДФЛ, как правило, возникает: дядя не относится к близким родственникам, освобождённым от налога. При продаже раньше минимального срока владения доход можно уменьшить либо на имущественный вычет 1 млн ₽, либо на подтверждённые расходы — выбор зависит от документов и обстоятельств.</p><p>В отдельных случаях учитываются расходы дарителя на покупку квартиры либо стоимость, с которой был уплачен НДФЛ при дарении. Точный расчёт требует проверки дат, кадастровой стоимости и документов дарителя.</p></div>
           </details>
           <details>
             <summary><span>02</span>Можно ли получить имущественный вычет при покупке квартиры у бывшего супруга после развода?</summary>
@@ -506,7 +700,7 @@ export default function Home() {
           </details>
           <details>
             <summary><span>03</span>Как рассчитывается налог на проценты по банковским вкладам в 2026 году?</summary>
-            <div className="qa-answer"><p>В 2026 году уплачивается налог с процентов, полученных в 2025 году. Необлагаемый минимум за 2025 год равен 210 000 ₽: 1 млн ₽ умножается на максимальную ключевую ставку 21% на первое число месяца в том году.</p><p>Для процентов, полученных уже в 2026 году, необлагаемый минимум станет окончательно известен после завершения года; налог по ним уплачивается в 2027 году. ФНС рассчитывает сумму сама по сведениям банков.</p><a href="https://www.nalog.gov.ru/rn62/news/activities_fts/16639281/" target="_blank" rel="noreferrer">Разъяснение ФНС России →</a></div>
+            <div className="qa-answer"><p>В 2026 году уплачивается налог с процентов, полученных в 2025 году. Необлагаемый минимум за 2025 год равен 210 000 ₽: 1 млн ₽ умножается на максимальную ключевую ставку 21% на первое число месяца в том году.</p><p>Для процентов, полученных уже в 2026 году, необлагаемый минимум станет окончательно известен после завершения года; налог по ним уплачивается в 2027 году. ФНС рассчитывает сумму сама по сведениям банков.</p></div>
           </details>
         </div>
         <div className="qa-note">Примеры носят информационный характер. Персональный ответ учитывает обстоятельства, которые вы укажете в вопросе.</div>
@@ -514,49 +708,79 @@ export default function Home() {
       </section>
 
       <section className="steps-section" aria-labelledby="steps-heading">
-        <div className="content-heading"><span>Пять понятных шагов</span><h2 id="steps-heading">Как это работает</h2></div>
-        <ol className="steps-grid"><li><b>01</b><h3>Опишите ситуацию</h3><p>Без ФИО, телефона, паспорта и ИНН.</p></li><li><b>02</b><h3>Выберите формат</h3><p>Проверка ситуации или подробный расчёт.</p></li><li><b>03</b><h3>Оплатите через ЮKassa</h3><p>Данные банковской карты не попадают на сайт.</p></li><li><b>04</b><h3>Получите код</h3><p>Четыре цифры откроют ваш защищённый сейф.</p></li><li><b>05</b><h3>Получите письменный ответ</h3><p>Анализ, расчёт и рекомендации в выбранный срок.</p></li></ol>
+        <div className="content-heading"><span>Пять понятных шагов</span><h2 id="steps-heading">Как это работает</h2><p>Нажмите на этап, чтобы перейти к соответствующей части консультации. Завершённые этапы отмечаются зелёным.</p></div>
+        <ol className="consultation-journey" aria-label="Этапы получения консультации">
+          <li className={processStepClass(1)}><a href="#pricing-heading" aria-current={processStep === 1 ? "step" : undefined}><b>01</b><span><strong>Выберите формат</strong><small>Проверка ситуации или подробный расчёт.</small></span></a></li>
+          <li className={processStepClass(2)}><a href="#consultation-door" aria-current={processStep === 2 ? "step" : undefined}><b>02</b><span><strong>Оплатите консультацию</strong><small>Защищённый переход на страницу ЮKassa.</small></span></a></li>
+          <li className={processStepClass(3)}><a href="#consultation-room" aria-current={processStep === 3 ? "step" : undefined}><b>03</b><span><strong>Опишите ситуацию</strong><small>Без ФИО, телефона, паспорта и ИНН.</small></span></a></li>
+          <li className={processStepClass(4)}><a href="#answer-safe-room" aria-current={processStep === 4 ? "step" : undefined}><b>04</b><span><strong>Сохраните код</strong><small>Четыре цифры откроют защищённый сейф.</small></span></a></li>
+          <li className={processStepClass(5)}><a href="#answer-safe-room" aria-current={processStep === 5 ? "step" : undefined}><b>05</b><span><strong>Получите ответ</strong><small>Сейф откроется сразу после ответа специалиста.</small></span></a></li>
+        </ol>
       </section>
 
       <section className="pricing-section" aria-labelledby="pricing-heading">
-        <div className="pricing-heading"><span>Два формата работы</span><h2 id="pricing-heading">Выберите глубину разбора</h2><p>Оба тарифа включают персональный письменный результат. Стоимость фиксируется до перехода на страницу ЮKassa.</p><div className="service-hours"><b>Приём вопросов</b><strong>{serviceScheduleText}</strong><em>Время московское</em><span>Допопция «Срочно» в отдельные часы может быть недоступна.</span></div></div>
-        <div className="tariff-grid" role="radiogroup" aria-label="Тариф консультации">
-          {tariffs.map((tariff) => <label className={`tariff-card ${selectedTariffCode === tariff.code ? "selected" : ""} ${tariff.available === false ? "unavailable" : ""}`} key={tariff.code}>
-            <input type="radio" name="consultation-tariff" value={tariff.code} checked={selectedTariffCode === tariff.code} disabled={tariff.available === false} onChange={() => setSelectedTariffCode(tariff.code)} />
-            <span className="tariff-radio" aria-hidden="true" />
-            {tariff.available === false ? <b className="tariff-badge unavailable-badge">Временно недоступен</b> : tariff.recommended && <b className="tariff-badge">Рекомендуем</b>}
-            <strong>{tariff.name}</strong><em>{(tariff.amountKopecks / 100).toLocaleString("ru-RU")} ₽</em><small>{tariffDeadline(tariff.deadlineMinutes)}</small><p>{tariff.description}</p>
-          </label>)}
+        <div className="pricing-heading"><h2 id="pricing-heading">Выберите формат работы</h2><div className="service-hours"><b>Приём вопросов</b><strong>{serviceScheduleText}</strong><em>Время московское</em><span>Допопция «Срочно» в отдельные часы может быть недоступна.</span></div></div>
+        <fieldset id="tariff-assessment" className="tariff-assessment">
+          <legend>Подберём минимально подходящий тариф</legend>
+          <p>Отметьте всё, что относится к вашему вопросу. Если подходит хотя бы один пункт, потребуется подробный разбор.</p>
+          <div className="tariff-assessment-grid">{tariffAssessmentQuestions.map((item) => <label key={item.id} className={tariffAssessmentFlags.includes(item.id) ? "selected" : ""}><input type="checkbox" checked={tariffAssessmentFlags.includes(item.id)} onChange={(event) => toggleTariffAssessment(item.id, event.target.checked)} /><span>{item.label}</span></label>)}</div>
+          <label htmlFor="tariff-simple-choice" aria-label="Ничего из перечисленного не требуется" className={`tariff-simple-choice ${simpleAssessmentConfirmed ? "selected" : ""}`}><input id="tariff-simple-choice" type="checkbox" checked={simpleAssessmentConfirmed} onChange={(event) => confirmSimpleAssessment(event.target.checked)} /><span><b>Ничего из перечисленного не требуется</b><small>Один объект или одна операция, краткий вывод и общий порядок действий без сложного расчёта.</small></span></label>
+          {tariffAssessmentMessage && <div className={`tariff-assessment-result ${requiresDetailedTariff ? "detailed" : "simple"}`} role="status">{tariffAssessmentMessage}</div>}
+        </fieldset>
+        <div id="tariff-options" className="tariff-grid" role="radiogroup" aria-label="Тариф консультации">
+          {tariffs.map((tariff) => {
+            const assessmentBlocksTariff = tariff.code === "situation-check" && requiresDetailedTariff;
+            const tariffUnavailable = tariff.available === false || assessmentBlocksTariff;
+            return <label className={`tariff-card ${selectedTariffCode === tariff.code ? "selected" : ""} ${tariffUnavailable ? "unavailable" : ""}`} key={tariff.code}>
+              <input type="radio" name="consultation-tariff" value={tariff.code} checked={selectedTariffCode === tariff.code} disabled={tariffUnavailable} onChange={() => setSelectedTariffCode(tariff.code)} />
+              <span className="tariff-radio" aria-hidden="true" />
+              {tariff.available === false ? <b className="tariff-badge unavailable-badge">Временно недоступен</b> : assessmentBlocksTariff ? <b className="tariff-badge unavailable-badge">Не подходит по ответам</b> : tariff.recommended && <b className="tariff-badge">Рекомендуем</b>}
+              <strong>{tariff.name}</strong><em>{(tariff.amountKopecks / 100).toLocaleString("ru-RU")} ₽</em><small>{tariffDeadline(tariff.deadlineMinutes)}</small><p>{tariff.description}</p>
+              {tariffCriteria[tariff.code] && <div className="tariff-criteria"><b>{tariffCriteria[tariff.code].heading}</b><ul>{tariffCriteria[tariff.code].items.map((item) => <li key={item}>{item}</li>)}</ul></div>}
+            </label>;
+          })}
         </div>
         <label className={`urgent-option ${urgentSelected ? "selected" : ""} ${urgentAddon.available === false ? "unavailable" : ""}`}><input type="checkbox" checked={urgentSelected} disabled={urgentAddon.available === false} onChange={(event) => setUrgentSelected(event.target.checked)} /><span><b>Срочно +{(urgentAddon.amountKopecks / 100).toLocaleString("ru-RU")} ₽</b><small>Письменный результат в течение 2 часов. Это допопция к выбранному тарифу.</small></span>{urgentAddon.available === false && <em>Сейчас недоступно</em>}</label>
-        <div className="tariff-summary" aria-live="polite"><div><span>Выбран тариф «{selectedTariff?.name ?? fallbackTariffs[0].name}»{urgentSelected ? " с допопцией «Срочно»" : ""}</span><strong>К оплате: {priceLabel}</strong><small>{selectedDeadline}</small></div><div><a href="#room">Перейти к консультации →</a></div></div>
+        <p className="tariff-depth-note">Оба тарифа включают персональный письменный результат и отличаются только глубиной разбора.</p>
+        <div className="tariff-summary" aria-live="polite"><div><span>{tariffAssessmentCompleted ? `Выбран тариф «${selectedTariff?.name ?? fallbackTariffs[0].name}»${urgentSelected ? " с допопцией «Срочно»" : ""}` : "Сначала пройдите подбор тарифа"}</span><strong>К оплате: {priceLabel}</strong><small>{selectedDeadline}</small></div><div><a href={tariffAssessmentCompleted ? "#consultation-door" : "#tariff-assessment"}>Далее</a></div></div>
+        <a className="flow-arrow" href="#consultation-door" aria-label="Перейти к консультации">↓</a>
       </section>
 
       <section className="trust-section" aria-labelledby="trust-heading"><div className="content-heading"><span>Почему сервису можно доверять</span><h2 id="trust-heading">Проверяемый специалист и прозрачный процесс</h2></div><div className="trust-grid"><article><h3>Оплата через ЮKassa</h3><p>Платёж проходит на защищённой странице платёжного сервиса.</p></article><article><h3>Письменный результат</h3><p>Вы получаете вывод, расчёт и рекомендации, к которым можно вернуться.</p></article><article><h3>Известен исполнитель</h3><p>На странице указаны имя, статус, ИНН и профессиональный опыт консультанта.</p></article><article><h3>Понятная стоимость</h3><p>Два тарифа и одна допопция без скрытой платы за «вход».</p></article></div></section>
 
       <section className="privacy-section" aria-labelledby="privacy-heading"><div><span className="mini-label">Конфиденциальность</span><h2 id="privacy-heading">Можно обойтись без регистрации и персональных данных</h2><p>Не указывайте ФИО, телефон, e-mail, паспорт, ИНН, адрес и номера документов. После оплаты сервис выдаёт персональный четырёхзначный код. Для открытия ответа нужны этот браузер и код.</p><a href="/legal#privacy">Подробнее об условиях конфиденциальности →</a></div><div className="privacy-code" aria-hidden="true"><span>Ваш код</span><strong>••••</strong><small>Храните его у себя</small></div></section>
 
-      <section id="room" className="room-section">
-        <div className="section-heading"><span>Защищённая консультация</span><h2>Персональный разбор, расчёт и рекомендации</h2></div>
-        <div className={`room stage-${stage}`}>
+      <section id="consultation-door" className="room-section door-section">
+        <div id="consultation-room" className={`room door-room stage-${stage}`}>
           <div className="window"><span/><span/><span/><span/></div><div className="plant"><i/><b>✦</b></div>
           <div className="door-wrap">
             <div className={`door ${stage !== "room" && stage !== "payment" ? "door-active" : ""}`}><div className="door-sign">КОНСУЛЬТАНТ<small>на связи</small></div><div className="door-knob" /></div>
-            {stage === "room" && <><button className="pay-button" onClick={beginPayment}><span>НАЧАТЬ</span><strong>{priceLabel}</strong></button><p>Опишите одну налоговую ситуацию без регистрации</p></>}
+            {stage === "room" && <><button className="pay-button" onClick={beginPayment}><span>ОПЛАТИТЬ</span><strong>{priceLabel}</strong></button><p>После оплаты здесь откроется форма вопроса</p></>}
           </div>
-          <div className={`safe ${answerReady ? "safe-ready" : ""}`} aria-label="Защищённый сейф с ответом"><span className="safe-label">{answerReady ? "ОТВЕТ ГОТОВ" : "Проверенный налоговым специалистом письменный ответ в срок выбранного тарифа"}</span><div className={`safe-door ${stage === "answer" ? "safe-open" : ""}`}><i className="safe-wheel" aria-hidden="true"><span /></i><b>ПЕРСОНАЛЬНЫЙ КОД</b></div><div className="safe-legs"><i/><i/></div></div><div className="rug" />
+          <div className="rug" />
 
           {stage === "payment" && <div className="modal-backdrop">{vpnNoticeVisible ? <section className="payment-card vpn-notice-card" role="alertdialog" aria-modal="true" aria-labelledby="vpn-title"><button className="close" onClick={() => setVpnNoticeVisible(false)} aria-label="Вернуться">×</button><span className="vpn-icon" aria-hidden="true">!</span><small>Перед переходом к оплате</small><h3 id="vpn-title">Выключите VPN, если он включён</h3><p className="vpn-warning">Иначе защищённая страница оплаты может не открыться или платёж может быть отклонён.</p><button className="action-button" disabled={busy} onClick={startPayment}>{busy ? "Открываем оплату…" : "VPN выключен — перейти к оплате"}</button><button className="vpn-back" type="button" onClick={() => setVpnNoticeVisible(false)}>Вернуться назад</button></section> : <section className="payment-card" role="dialog" aria-modal="true" aria-labelledby="payment-title"><button className="close" onClick={() => setStage("room")} aria-label="Закрыть">×</button><span className="payment-icon">₽</span><small>Защищённая оплата через ЮKassa</small><h3 id="payment-title">Тариф «{selectedTariff?.name ?? fallbackTariffs[0].name}»{urgentSelected ? " · Срочно" : ""}</h3><p className="payment-deadline">{selectedDeadline}</p><div className="price-row"><span>К оплате</span><strong>{priceLabel}</strong></div><button className="action-button" disabled={busy || Boolean(paymentMessage && consultationId)} onClick={() => setVpnNoticeVisible(true)}>{busy ? "Открываем оплату…" : consultationId ? "Проверяем платёж…" : `Оплатить ${priceLabel}`}</button>{paymentMessage && <p className="payment-error" role="status">{paymentMessage}</p>}<p>Оплата проходит на странице ЮKassa. Сайт не получает и не хранит данные банковской карты.</p></section>}</div>}
 
           {stage === "question" && <div className="desk-layer"><article className="question-paper"><header><span>Описание ситуации</span><strong>Номер консультации (код) — <b>{displayCode(consultationCode)}</b></strong></header>{tipVisible && <div className="timed-tip"><b>Подсказка</b> Опишите существенные даты, суммы и обстоятельства одной налоговой ситуации. Ответ появится в сейфе не позднее срока выбранного тарифа. Не указывайте ФИО, адрес, телефон, e-mail, номера документов и другие персональные данные.</div>}<label htmlFor="question">Ваша ситуация для персонального разбора</label><textarea id="question" value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={1200} placeholder="Например: в 2025 году я продал квартиру. Укажите даты приобретения и продажи, суммы и способ приобретения — без персональных данных."/><label className="privacy-check"><input type="checkbox" checked={privacyAccepted} onChange={(event) => setPrivacyAccepted(event.target.checked)} /><span>Я ознакомился(ась) с <a href="/legal#privacy" target="_blank">условиями конфиденциальности</a> и подтверждаю, что не указываю в вопросе персональные данные свои или третьих лиц.</span></label><div className="paper-footer"><span>{question.length} / 1200</span><button className="action-button" disabled={question.trim().length < 10 || busy || !privacyAccepted} onClick={saveQuestion}>{busy ? "Сохраняем…" : "Передать на разбор"} <b>✓</b></button></div>{safeMessage && <p className="form-message" role="status">{safeMessage}</p>}</article></div>}
 
-          {stage === "waiting" && codeNoticeVisible && <div className="waiting-panel code-notice-panel"><span className="seal">✓</span><h3>Вопрос сохранён</h3><p>Ответ будет подготовлен не позднее <strong>{deadline}</strong>.</p><div className="code-reminder"><span>Ваш персональный код</span><strong>{displayCode(consultationCode)}</strong></div><div className="privacy-countdown"><b>Запомните код!</b><span>Для конфиденциальности окошко закроется через <strong>{codeNoticeSeconds}</strong> сек.</span></div></div>}
+        </div>
+      </section>
 
-          {stage === "waiting" && !codeNoticeVisible && !answerReady && <div className="pending-toast" role="status"><i />Вопрос принят и зашифрован. Ожидаем ответ консультанта.</div>}
+      <section id="answer-safe" className="room-section safe-section">
+        <a className="flow-cta flow-cta-long" href="#answer-safe-room">Получить письменный ответ</a>
+        <div className="section-heading safe-section-heading"><span>Ответ проверяет налоговый специалист</span><h2>Персональный разбор, расчёт и рекомендации</h2><p>Письменный ответ — в срок выбранного тарифа.</p></div>
+        <div id="answer-safe-room" className={`room safe-room stage-${stage}`}>
+          <div className="window"><span/><span/><span/><span/></div><div className="plant"><i/><b>✦</b></div>
+          <div className={`safe ${answerReady ? "safe-ready" : ""}`} aria-label="Защищённый сейф с ответом"><span className="safe-label">{answerReady ? "ОТВЕТ ПОЛУЧЕН" : "Проверенный налоговым специалистом письменный ответ в срок выбранного тарифа"}</span><div className={`safe-door ${stage === "answer" ? "safe-open" : ""}`}><i className="safe-wheel" aria-hidden="true"><span /></i><b>ПЕРСОНАЛЬНЫЙ КОД</b></div><div className="safe-legs"><i/><i/></div></div><div className="rug" />
 
-          {stage === "waiting" && !codeNoticeVisible && answerReady && <div className="safe-entry-panel"><span className="safe-entry-kicker">Ответ готов</span><h3>Откройте сейф</h3><p>Введите сохранённый персональный код консультации.</p><label htmlFor="safe-code">Код от сейфа</label><div className="code-entry"><input id="safe-code" inputMode="numeric" autoComplete="one-time-code" maxLength={4} value={safeCode} onChange={(event) => setSafeCode(event.target.value.replace(/\D/g, ""))} placeholder="••••" aria-label="Четырёхзначный код консультации"/><button onClick={openSafe}>Открыть</button></div>{safeMessage && <p className="safe-message" role="status">{safeMessage}</p>}</div>}
-
-          {stage === "answer" && <div className="answer-layer"><div className="answer-document-actions"><button type="button" onClick={downloadAnswer}>Скачать ответ</button><button type="button" onClick={() => window.print()}>Печать / PDF</button></div><section className="answer-carousel" aria-label={`Ответ консультанта, страница ${answerPage + 1} из ${answerPages.length}`}><div className="answer-track" style={{ transform: `translateX(-${answerPage * 100}%)` }}>{answerPages.map((page, index) => <article className="answer-paper" key={index} aria-hidden={index !== answerPage}><header><span>Ответ консультанта</span><strong>Консультация № {displayCode(consultationCode)}</strong></header><div className="consultant-stamp">КОНСУЛЬТАНТ<br/><b>ОТВЕТИЛ</b></div><h3>{index === 0 ? "Ответ готов" : "Продолжение ответа"}</h3><p className="consultation-answer">{page}</p>{index === answerPages.length - 1 && <div className="answer-note"><b>Важно:</b> ответ относится к описанной ситуации. Если существенные обстоятельства не были указаны, вывод может измениться.</div>}</article>)}</div><div className="answer-pagination"><button type="button" disabled={answerPage === 0} onClick={() => setAnswerPage((page) => Math.max(0, page - 1))}>← Назад</button><span>Страница <b>{answerPage + 1}</b> из {answerPages.length}</span>{answerPage < answerPages.length - 1 ? <button type="button" onClick={() => setAnswerPage((page) => Math.min(answerPages.length - 1, page + 1))}>Далее →</button> : <button className="finish-answer" type="button" onClick={resetConsultation}>Завершить</button>}</div><div className="answer-dots" aria-hidden="true">{answerPages.map((_, index) => <i className={index === answerPage ? "active" : ""} key={index} />)}</div></section></div>}
+          {stage === "waiting" && codeNoticeVisible && <div className="waiting-panel code-notice-panel"><span className="seal">✓</span><h3>Вопрос сохранён</h3><p>Ответ будет подготовлен не позднее <strong>{deadline}</strong>.</p><div className="code-reminder"><span>Ваш персональный код</span><strong>{displayCode(consultationCode)}</strong></div><div className="privacy-countdown"><b>Запишите код или сделайте снимок экрана</b><span>Для конфиденциальности окошко закроется через <strong>{codeNoticeSeconds}</strong> сек.</span></div><button type="button" className="code-notice-dismiss" onClick={() => setCodeNoticeVisible(false)}>Код записан — закрыть</button></div>}
+          {stage === "waiting" && !codeNoticeVisible && upgradeStatus === "requested" && <section className="upgrade-panel" role="dialog" aria-labelledby="upgrade-title"><span className="upgrade-kicker">Уточнение объёма работы</span><h3 id="upgrade-title">Для вопроса нужен подробный разбор</h3><p>Консультант увидел признаки тарифа 990 ₽. Выберите один из двух вариантов:</p><div className="upgrade-options"><button type="button" disabled={upgradeBusy} onClick={() => void decideUpgrade("decline")}><b>Оставить тариф 390 ₽</b><span>Получить краткий вывод и общий порядок действий без сложного расчёта.</span></button><button className="upgrade-pay" type="button" disabled={upgradeBusy} onClick={() => void decideUpgrade("pay")}><b>Доплатить 600 ₽</b><span>Перейти к точному расчёту и подробному разбору. Новый срок начнётся после доплаты.</span></button></div>{upgradeMessage && <p className="upgrade-message" role="status">{upgradeMessage}</p>}</section>}
+          {stage === "waiting" && !codeNoticeVisible && upgradeStatus === "awaiting_payment" && !answerReady && <div className="pending-toast upgrade-pending" role="status"><i />Проверяем доплату 600 ₽. После подтверждения начнётся новый срок подробного разбора.</div>}
+          {stage === "waiting" && !codeNoticeVisible && upgradeStatus === "completed" && !answerReady && <div className="pending-toast upgrade-complete" role="status"><i />Доплата получена. Консультант готовит подробный разбор.</div>}
+          {stage === "waiting" && !codeNoticeVisible && upgradeStatus === "declined" && !answerReady && <div className="pending-toast" role="status"><i />Выбран тариф 390 ₽. Консультант готовит краткий ответ.</div>}
+          {stage === "waiting" && !codeNoticeVisible && upgradeStatus === null && !answerReady && <div className="pending-toast" role="status"><i />Вопрос принят и зашифрован. Ожидаем ответ консультанта.</div>}
+          {stage === "waiting" && !codeNoticeVisible && answerReady && <div className="safe-entry-panel"><span className="safe-entry-kicker">Ответ получен</span><h3>Введите код от сейфа</h3><p>Ответ специалиста уже доступен. Введите сохранённый персональный код консультации.</p><label htmlFor="safe-code">Код от сейфа</label><div className="code-entry"><input id="safe-code" inputMode="numeric" autoComplete="one-time-code" maxLength={4} value={safeCode} onChange={(event) => setSafeCode(event.target.value.replace(/\D/g, ""))} placeholder="••••" aria-label="Четырёхзначный код консультации"/><button onClick={openSafe}>Открыть</button></div>{safeMessage && <p className="safe-message" role="status">{safeMessage}</p>}</div>}
+          {stage === "answer" && <div className="answer-layer"><div className="answer-document-actions"><button type="button" onClick={downloadAnswer}>Скачать ответ</button><button type="button" onClick={() => window.print()}>Печать / PDF</button></div><section className="answer-carousel" aria-label={`Ответ консультанта, страница ${answerPage + 1} из ${answerPages.length}`}><div className="answer-track">{answerPages.map((page, index) => <article className="answer-paper" key={index} aria-hidden={index !== answerPage}><header><span>Ответ консультанта</span><strong>Консультация № {displayCode(consultationCode)}</strong></header><div className="consultant-stamp">КОНСУЛЬТАНТ<br/><b>ОТВЕТИЛ</b></div><h3>{index === 0 ? "Ответ готов" : "Продолжение ответа"}</h3><p className="consultation-answer">{page}</p>{index === answerPages.length - 1 && <div className="answer-note"><b>Важно:</b> ответ относится к описанной ситуации. Если существенные обстоятельства не были указаны, вывод может измениться.</div>}</article>)}</div><div className="answer-pagination"><button type="button" disabled={answerPage === 0} onClick={() => setAnswerPage((page) => Math.max(0, page - 1))}>← Назад</button><span>Страница <b>{answerPage + 1}</b> из {answerPages.length}</span>{answerPage < answerPages.length - 1 ? <button type="button" onClick={() => setAnswerPage((page) => Math.min(answerPages.length - 1, page + 1))}>Далее →</button> : <button className="finish-answer" type="button" onClick={resetConsultation}>Завершить</button>}</div><div className="answer-dots" aria-hidden="true">{answerPages.map((_, index) => <i className={index === answerPage ? "active" : ""} key={index} />)}</div></section></div>}
         </div>
         <p className="demo-note">Вопрос и ответ хранятся в зашифрованном виде. Для открытия сейфа нужны этот браузер и ваш четырёхзначный код.</p>
       </section>
@@ -569,7 +793,7 @@ export default function Home() {
 
       {scheduleNoticeVisible && <div className="schedule-closed-backdrop"><section className="payment-card schedule-closed-card" role="alertdialog" aria-modal="true" aria-labelledby="schedule-closed-title"><button className="close" type="button" onClick={() => setScheduleNoticeVisible(false)} aria-label="Закрыть">×</button><span className="schedule-closed-icon" aria-hidden="true">◷</span><small>Приём вопросов закрыт</small><h3 id="schedule-closed-title">В настоящее время вопросы недоступны</h3><p>Посмотрите расписание на сайте. Приносим извинения за неудобства.</p><button className="action-button" type="button" onClick={showSchedule}>Посмотреть расписание</button></section></div>}
 
-      <footer><div className="brand"><span className="brand-mark">₽</span><span>НДФЛ<span className="brand-dot">.просто</span></span></div><nav aria-label="Правовая информация"><a href="/legal#offer">Оферта</a><a href="/legal#privacy">Конфиденциальность</a><a href="/legal#refunds">Возврат</a><a href="/legal#contacts">Контакты</a></nav><a href="#top">Наверх ↑</a></footer>
+      <footer><div className="brand"><span className="brand-mark">₽</span><span>НДФЛ<span className="brand-dot">.просто</span></span></div><LegalFooterLinks /><a href="#top">Наверх ↑</a></footer>
       {stage === "room" && <button className="mobile-question-cta" type="button" onClick={() => document.getElementById("diagnostic")?.scrollIntoView({ behavior: "smooth" })}>Проверить НДФЛ</button>}
     </main>
   );

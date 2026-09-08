@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import pg from "pg";
+import { DEFAULT_LEGAL_DOCUMENTS } from "../lib/legal-documents.mjs";
 
 const { Pool } = pg;
 
@@ -184,7 +186,101 @@ const migrations = [
         '[{"day":"monday","enabled":true,"start":"09:00","end":"13:00"},{"day":"tuesday","enabled":true,"start":"09:00","end":"13:00"},{"day":"wednesday","enabled":true,"start":"09:00","end":"13:00"},{"day":"thursday","enabled":true,"start":"09:00","end":"13:00"},{"day":"friday","enabled":true,"start":"09:00","end":"13:00"},{"day":"saturday","enabled":false,"start":"09:00","end":"13:00"},{"day":"sunday","enabled":false,"start":"09:00","end":"13:00"}]'::jsonb`,
     ],
   },
+  {
+    version: 10,
+    statements: [
+      `ALTER TABLE consultations
+        ADD COLUMN IF NOT EXISTS answer_opened_at timestamptz`,
+      `CREATE INDEX IF NOT EXISTS consultations_answer_opened_idx
+        ON consultations (answer_opened_at DESC) WHERE answer_opened_at IS NOT NULL`,
+    ],
+  },
+  {
+    version: 11,
+    statements: [
+      `ALTER TABLE consultations
+        ADD COLUMN IF NOT EXISTS tariff_assessment jsonb NOT NULL DEFAULT '[]'::jsonb`,
+      `ALTER TABLE consultations
+        ADD COLUMN IF NOT EXISTS tariff_assessment_confirmed boolean NOT NULL DEFAULT false`,
+    ],
+  },
+  {
+    version: 12,
+    statements: [
+      `ALTER TABLE payments
+        ADD COLUMN IF NOT EXISTS purpose varchar(24) NOT NULL DEFAULT 'consultation'`,
+      `ALTER TABLE payments
+        DROP CONSTRAINT IF EXISTS payments_purpose_check`,
+      `ALTER TABLE payments
+        ADD CONSTRAINT payments_purpose_check
+        CHECK (purpose IN ('consultation', 'tariff_upgrade'))`,
+      `ALTER TABLE payments
+        ADD COLUMN IF NOT EXISTS confirmation_url text`,
+      `ALTER TABLE consultations
+        ADD COLUMN IF NOT EXISTS upgrade_status varchar(24)`,
+      `ALTER TABLE consultations
+        DROP CONSTRAINT IF EXISTS consultations_upgrade_status_check`,
+      `ALTER TABLE consultations
+        ADD CONSTRAINT consultations_upgrade_status_check
+        CHECK (upgrade_status IS NULL OR upgrade_status IN ('requested', 'declined', 'awaiting_payment', 'completed'))`,
+      `ALTER TABLE consultations
+        ADD COLUMN IF NOT EXISTS upgrade_requested_at timestamptz`,
+      `ALTER TABLE consultations
+        ADD COLUMN IF NOT EXISTS upgrade_completed_at timestamptz`,
+      `CREATE INDEX IF NOT EXISTS payments_upgrade_idx
+        ON payments (consultation_id, created_at DESC) WHERE purpose = 'tariff_upgrade'`,
+    ],
+  },
 ];
+
+// Encrypted recovery codes are optional for consultations created before this migration.
+migrations.push({
+  version: 13,
+  statements: [
+    `ALTER TABLE consultations ADD COLUMN IF NOT EXISTS recovery_code_ciphertext bytea`,
+    `ALTER TABLE consultations ADD COLUMN IF NOT EXISTS recovery_code_iv bytea`,
+    `ALTER TABLE consultations ADD COLUMN IF NOT EXISTS recovery_code_tag bytea`,
+  ],
+});
+
+migrations.push({
+  version: 14,
+  statements: [
+    `CREATE TABLE IF NOT EXISTS legal_documents (
+      id uuid PRIMARY KEY,
+      slug varchar(64) NOT NULL UNIQUE CHECK (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
+      title varchar(160) NOT NULL,
+      footer_label varchar(80) NOT NULL,
+      body text NOT NULL,
+      status varchar(16) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published')),
+      show_in_footer boolean NOT NULL DEFAULT false,
+      sort_order integer NOT NULL DEFAULT 100 CHECK (sort_order BETWEEN 0 AND 999),
+      is_system boolean NOT NULL DEFAULT false,
+      revision integer NOT NULL DEFAULT 1 CHECK (revision > 0),
+      published_revision integer CHECK (published_revision IS NULL OR published_revision > 0),
+      published_at timestamptz,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS legal_documents_public_idx
+      ON legal_documents (status, show_in_footer, sort_order)`,
+    `CREATE TABLE IF NOT EXISTS legal_document_versions (
+      id uuid PRIMARY KEY,
+      document_id uuid NOT NULL REFERENCES legal_documents(id) ON DELETE CASCADE,
+      revision integer NOT NULL CHECK (revision > 0),
+      title varchar(160) NOT NULL,
+      footer_label varchar(80) NOT NULL,
+      body text NOT NULL,
+      status varchar(16) NOT NULL CHECK (status IN ('draft', 'published')),
+      show_in_footer boolean NOT NULL,
+      sort_order integer NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      UNIQUE (document_id, revision)
+    )`,
+    `CREATE INDEX IF NOT EXISTS legal_document_versions_document_idx
+      ON legal_document_versions (document_id, revision DESC)`,
+  ],
+});
 
 function missingDatabaseVariables() {
   return requiredVariables.filter((name) => !process.env[name]);
@@ -260,6 +356,24 @@ export async function initializeDatabase() {
       await client.query(
         "INSERT INTO schema_migrations (version) VALUES ($1)",
         [migration.version],
+      );
+    }
+
+    for (const document of DEFAULT_LEGAL_DOCUMENTS) {
+      await client.query(
+        `INSERT INTO legal_documents
+          (id, slug, title, footer_label, body, status, show_in_footer, sort_order, is_system, revision, published_revision, published_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, 'published', $6, $7, true, 1, 1, $8, $8)
+         ON CONFLICT (slug) DO NOTHING`,
+        [document.id, document.slug, document.title, document.footerLabel, document.body, document.showInFooter, document.sortOrder, document.updatedAt],
+      );
+      await client.query(
+        `INSERT INTO legal_document_versions
+          (id, document_id, revision, title, footer_label, body, status, show_in_footer, sort_order, created_at)
+         SELECT $2, id, revision, title, footer_label, body, status, show_in_footer, sort_order, updated_at
+         FROM legal_documents WHERE slug = $1 AND revision = 1
+         ON CONFLICT (document_id, revision) DO NOTHING`,
+        [document.slug, randomUUID()],
       );
     }
 

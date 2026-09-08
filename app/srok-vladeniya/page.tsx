@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import LegalFooterLinks from "../../components/LegalFooterLinks";
+import { reachMetrikaGoal } from "../../lib/metrika";
 
 export default function OwnershipPeriodPage() {
   function goToConsultation() {
@@ -24,7 +26,7 @@ export default function OwnershipPeriodPage() {
       <header className="savings-hero period-hero">
         <div className="savings-hero-copy">
           <span className="savings-kicker">Проверьте дату до уплаты налога</span>
-          <h1>Вы уверены, что <em>не выдержали</em> срок владения?</h1>
+          <h1>Вы уверены, что <em>правильно определили</em> срок владения?</h1>
           <p>Пять лет — не универсальное правило, а дата регистрации права не всегда является точкой отсчёта. Одна проверка может изменить налог полностью.</p>
           <a href="#period-check">Проверить ситуацию <span>↓</span></a>
         </div>
@@ -40,7 +42,7 @@ export default function OwnershipPeriodPage() {
       <section id="period-check" className="period-check" aria-labelledby="period-check-heading">
         <header>
           <span>Ошибка, которая стоит денег</span>
-          <h2 id="period-check-heading">Сначала определите правильную точку отсчёта</h2>
+          <h2 id="period-check-heading">Сначала проверьте точку отсчёта</h2>
           <p>Человек смотрит на выписку ЕГРН, видит, что пять лет ещё не прошло, и готовится платить налог. Но эксперт проверяет основание приобретения и применимый именно к этой ситуации срок.</p>
         </header>
 
@@ -80,20 +82,15 @@ export default function OwnershipPeriodPage() {
           <aside><b>Эксперт проверит</b><ul><li>основание приобретения квартиры;</li><li>юридически значимую дату начала владения;</li><li>срок 3 или 5 лет;</li><li>жильё и доли, принадлежащие супругам;</li><li>исключение для нового жилья, купленного за 90 дней.</li></ul></aside>
         </div>
 
-        <div className="period-sources">
-          <b>Проверить правила на сайте ФНС России</b>
-          <a href="https://www.nalog.gov.ru/rn60/taxation/taxes/ndfl/13690090/" target="_blank" rel="noreferrer">Срок 3 или 5 лет и единственное жильё →</a>
-          <a href="https://www.nalog.gov.ru/rn70/news/international_activities/12068964/" target="_blank" rel="noreferrer">Как определяется дата при приватизации →</a>
-        </div>
         <p className="savings-caveat period-caveat">Результат зависит от вида объекта, даты и основания приобретения, состава собственности супругов и других обстоятельств. Вывод «налог 0 ₽» можно делать только после проверки документов.</p>
       </section>
 
       <section className="savings-offer">
         <div><span>Следующий шаг</span><h2>Узнайте, нужно ли вам платить налог</h2><p>После оплаты в бланк вопроса будет перенесена заготовка. Добавьте основание приобретения квартиры и даты — консультант проверит срок владения.</p></div>
-        <aside><strong>390 ₽</strong><b>Проверка ситуации — до 4 часов</b><small>Допопция «Срочно» до 2 часов доступна на главной странице за 300 ₽</small><button type="button" onClick={goToConsultation}>Проверить мой срок владения →</button><em>Без регистрации</em></aside>
+        <aside><strong>390 ₽</strong><b>Проверка ситуации — до 4 часов</b><small>Допопция «Срочно» до 2 часов доступна на главной странице за 300 ₽</small><button type="button" onClick={() => { reachMetrikaGoal("content_to_consultation", { source: "ownership_period", tariff: "situation-check" }); goToConsultation(); }}>Проверить мой срок владения →</button><em>Без регистрации</em></aside>
       </section>
 
-      <footer className="calc-footer"><p>Информация на странице носит предварительный характер и не заменяет проверку документов.</p><nav><Link href="/legal#offer">Оферта</Link><Link href="/legal#privacy">Конфиденциальность</Link><Link href="/legal#contacts">Контакты</Link></nav></footer>
+      <footer className="calc-footer"><p>Информация на странице носит предварительный характер и не заменяет проверку документов.</p><LegalFooterLinks /></footer>
     </main>
   );
 }
